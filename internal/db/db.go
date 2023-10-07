@@ -26,7 +26,7 @@ func Connect(driver drivers.Driver) (*Database, error) {
 }
 
 func (db *Database) InitTables() error {
-	err := tables.InitProjectsTable(db.conn)
+	err := tables.InitProjectsTable(db.conn, db.driver)
 
 	if err != nil {
 		return err
@@ -34,6 +34,55 @@ func (db *Database) InitTables() error {
 
 	db.projects = []*tables.Project{}
 
+	err = tables.InitContainersTable(db.conn, db.driver)
+
+	if err != nil {
+		return err
+	}
+
+	err = tables.InitProjectContainersTable(db.conn, db.driver)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *Database) GetConnection() *sql.DB {
+	return db.conn
+}
+
+func (db *Database) AddProject(name string) error {
+	if len(db.projects) != 0 {
+		for _, project := range db.projects {
+			if project.Name == name {
+				return tables.ProjectAlreadyExistsError{Name: name, Err: nil}
+			}
+		}
+	}
+
+	pt := tables.GetProjectsTable(db.conn, db.driver)
+	project, err := pt.Add(name)
+
+	if err != nil {
+		_, ok := err.(tables.ProjectAlreadyExistsError)
+
+		if ok {
+			project, err := pt.GetByName(name)
+
+			if err != nil {
+				return err
+			}
+
+			db.projects = append(db.projects, project)
+			return tables.ProjectAlreadyExistsError{Name: name, Err: err}
+		}
+
+		return err
+	}
+
+	db.projects = append(db.projects, project)
 	return nil
 }
 
