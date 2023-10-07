@@ -1,13 +1,17 @@
 package drivers
 
-import "testing"
+import (
+	"testing"
+)
 
 func newTestPostgresDriver() PostgresDriver {
 	return PostgresDriver{
-		User:    "test",
-		Host:    "localhost",
-		Port:    "5432",
-		Sslmode: "disable",
+		User:     "test",
+		Password: "randomPw",
+		Host:     "localhost",
+		Port:     "5432",
+		Database: "TestDb",
+		Sslmode:  "disable",
 	}
 }
 
@@ -20,7 +24,7 @@ func TestPostgresGetName(t *testing.T) {
 
 func TestPostgresGetConnectionString(t *testing.T) {
 	d := newTestPostgresDriver()
-	expected := "postgres://test:@localhost:5432/postgres?sslmode=disable"
+	expected := "postgres://test:randomPw@localhost:5432/TestDb?sslmode=disable"
 	if d.GetConnectionString() != expected {
 		t.Error("Expected ", expected, ", got ", d.GetConnectionString())
 	}
