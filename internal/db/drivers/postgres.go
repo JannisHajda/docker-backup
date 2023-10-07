@@ -5,6 +5,7 @@ import "fmt"
 type PostgresDriver struct {
 	User     string
 	Password string
+	Database string
 	Host     string
 	Port     string
 	Sslmode  string
@@ -18,9 +19,10 @@ func (pg PostgresDriver) GetName() string {
 }
 
 func (pg PostgresDriver) GetConnectionString() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/postgres?sslmode=%s",
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		pg.User,
 		pg.Password,
+		pg.Database,
 		pg.Host,
 		pg.Port,
 		pg.Sslmode,
