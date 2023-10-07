@@ -9,9 +9,9 @@ import (
 var defaultEnvVars = map[string]string{
 	"PG_USER":     "postgres",
 	"PG_PASSWORD": "postgres",
-	"PG_DATABASE": "postgres",
 	"PG_HOST":     "localhost",
 	"PG_PORT":     "5432",
+	"PG_DATABASE": "postgres",
 	"PG_SSLMODE":  "disable",
 }
 
