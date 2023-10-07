@@ -12,7 +12,8 @@ import (
 type Database struct {
 	conn     *sql.DB
 	driver   drivers.Driver
-	projects []*tables.Project
+	pt       *ProjectsTable
+	projects []*Project
 }
 
 func Connect(driver drivers.Driver) (*Database, error) {
@@ -26,13 +27,11 @@ func Connect(driver drivers.Driver) (*Database, error) {
 }
 
 func (db *Database) InitTables() error {
-	err := tables.InitProjectsTable(db.conn, db.driver)
+	err := db.InitProjectsTable()
 
 	if err != nil {
 		return err
 	}
-
-	db.projects = []*tables.Project{}
 
 	err = tables.InitContainersTable(db.conn, db.driver)
 
@@ -54,35 +53,35 @@ func (db *Database) GetConnection() *sql.DB {
 }
 
 func (db *Database) AddProject(name string) error {
+
 	if len(db.projects) != 0 {
 		for _, project := range db.projects {
 			if project.Name == name {
-				return tables.ProjectAlreadyExistsError{Name: name, Err: nil}
+				return ProjectAlreadyExistsError{Name: name, Err: nil}
 			}
 		}
 	}
 
-	pt := tables.GetProjectsTable(db.conn, db.driver)
-	project, err := pt.Add(name)
+	p, err := db.pt.Add(name)
 
 	if err != nil {
-		_, ok := err.(tables.ProjectAlreadyExistsError)
+		_, ok := err.(ProjectAlreadyExistsError)
 
 		if ok {
-			project, err := pt.GetByName(name)
+			p, err := db.pt.GetByName(name)
 
 			if err != nil {
 				return err
 			}
 
-			db.projects = append(db.projects, project)
-			return tables.ProjectAlreadyExistsError{Name: name, Err: err}
+			db.projects = append(db.projects, p)
+			return ProjectAlreadyExistsError{Name: name, Err: err}
 		}
 
 		return err
 	}
 
-	db.projects = append(db.projects, project)
+	db.projects = append(db.projects, p)
 	return nil
 }
 

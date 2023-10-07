@@ -1,14 +1,8 @@
-package tables
-
-import (
-	"database/sql"
-
-	"github.com/JannisHajda/docker-backup/internal/db/drivers"
-)
+package db
 
 type ProjectsTable struct {
-	conn   *sql.DB
-	driver drivers.Driver
+	db       *Database
+	projects []*Project
 }
 
 type Project struct {
@@ -25,9 +19,12 @@ func (pae ProjectAlreadyExistsError) Error() string {
 	return "Project with name " + pae.Name + " already exists"
 }
 
-func InitProjectsTable(conn *sql.DB, driver drivers.Driver) error {
-	if driver.GetName() == "sqlite3" {
-		_, err := conn.Exec(`
+func (db *Database) InitProjectsTable() error {
+	db.projects = []*Project{}
+	db.pt = &ProjectsTable{db: db, projects: db.projects}
+
+	if db.driver.GetName() == "sqlite3" {
+		_, err := db.conn.Exec(`
 			CREATE TABLE IF NOT EXISTS projects (
 				id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 				name TEXT NOT NULL UNIQUE
@@ -37,7 +34,7 @@ func InitProjectsTable(conn *sql.DB, driver drivers.Driver) error {
 		return err
 	}
 
-	_, err := conn.Exec(`
+	_, err := db.conn.Exec(`
 		CREATE TABLE IF NOT EXISTS projects (
 			id SERIAL PRIMARY KEY NOT NULL,
 			name TEXT NOT NULL UNIQUE
@@ -47,62 +44,61 @@ func InitProjectsTable(conn *sql.DB, driver drivers.Driver) error {
 	return err
 }
 
-func GetProjectsTable(conn *sql.DB, driver drivers.Driver) *ProjectsTable {
-	return &ProjectsTable{conn: conn, driver: driver}
-}
-
 func (pt *ProjectsTable) Add(name string) (*Project, error) {
-	project := &Project{Name: name}
+	p := &Project{Name: name}
 
-	err := pt.conn.QueryRow(`
+	err := pt.db.conn.QueryRow(`
 		INSERT INTO projects (name)
 		VALUES ($1)
 		RETURNING id;
-	`, name).Scan(&project.Id)
+	`, name).Scan(&p.Id)
 
 	if err != nil {
-		if pt.driver.GetName() == "sqlite3" && err.Error() == "UNIQUE constraint failed: projects.name" {
+		if pt.db.driver.GetName() == "sqlite3" && err.Error() == "UNIQUE constraint failed: projects.name" {
 			return nil, ProjectAlreadyExistsError{Name: name, Err: err}
 		}
 
-		if pt.driver.GetName() == "postgres" && err.Error() == "pq: duplicate key value violates unique constraint \"projects_name_key\"" {
+		if pt.db.driver.GetName() == "postgres" && err.Error() == "pq: duplicate key value violates unique constraint \"projects_name_key\"" {
 			return nil, ProjectAlreadyExistsError{Name: name, Err: err}
 		}
 
 		return nil, err
+
 	}
 
-	return project, nil
+	pt.projects = append(pt.projects, p)
+
+	return p, nil
 }
 
 func (pt *ProjectsTable) GetById(id int64) (*Project, error) {
-	project := &Project{}
+	p := &Project{}
 
-	err := pt.conn.QueryRow(`
+	err := pt.db.conn.QueryRow(`
 		SELECT id, name
 		FROM projects
 		WHERE id = $1;
-	`, id).Scan(&project.Id, &project.Name)
+	`, id).Scan(&p.Id, &p.Name)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return project, nil
+	return p, nil
 }
 
 func (pt *ProjectsTable) GetByName(name string) (*Project, error) {
-	project := &Project{}
+	p := &Project{}
 
-	err := pt.conn.QueryRow(`
+	err := pt.db.conn.QueryRow(`
 		SELECT id, name
 		FROM projects
 		WHERE name = $1;
-	`, name).Scan(&project.Id, &project.Name)
+	`, name).Scan(&p.Id, &p.Name)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return project, nil
+	return p, nil
 }

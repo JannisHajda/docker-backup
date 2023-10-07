@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/JannisHajda/docker-backup/internal/db/drivers"
-	"github.com/JannisHajda/docker-backup/internal/db/tables"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,12 +55,12 @@ func TestAddProject(t *testing.T) {
 
 	assert.Len(t, db.projects, 1)
 
-	db.projects = []*tables.Project{}
+	db.projects = []*Project{}
 
 	err = db.AddProject("test")
 	require.Error(t, err)
 
-	_, ok := err.(tables.ProjectAlreadyExistsError)
+	_, ok := err.(ProjectAlreadyExistsError)
 	assert.True(t, ok)
 
 	assert.Len(t, db.projects, 1)
