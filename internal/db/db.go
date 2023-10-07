@@ -4,7 +4,6 @@ import (
 	"database/sql"
 
 	"github.com/JannisHajda/docker-backup/internal/db/drivers"
-	"github.com/JannisHajda/docker-backup/internal/db/tables"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -13,6 +12,8 @@ type Database struct {
 	conn     *sql.DB
 	driver   drivers.Driver
 	pt       *ProjectsTable
+	ct       *ContainersTable
+	pct      *ProjectContainersTable
 	projects []*Project
 }
 
@@ -33,13 +34,13 @@ func (db *Database) InitTables() error {
 		return err
 	}
 
-	err = tables.InitContainersTable(db.conn, db.driver)
+	err = db.InitContainersTable()
 
 	if err != nil {
 		return err
 	}
 
-	err = tables.InitProjectContainersTable(db.conn, db.driver)
+	err = db.InitProjectContainersTable()
 
 	if err != nil {
 		return err

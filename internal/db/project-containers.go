@@ -1,19 +1,20 @@
-package tables
+package db
 
-import (
-	"database/sql"
-
-	"github.com/JannisHajda/docker-backup/internal/db/drivers"
-)
+type ProjectContainersTable struct {
+	db                *Database
+	projectContainers []*ProjectContainers
+}
 
 type ProjectContainers struct {
 	ProjectId   int64
 	ContainerId string
 }
 
-func InitProjectContainersTable(conn *sql.DB, driver drivers.Driver) error {
-	if driver.GetName() == "sqlite3" {
-		_, err := conn.Exec(`
+func (db *Database) InitProjectContainersTable() error {
+	db.pct = &ProjectContainersTable{db: db, projectContainers: []*ProjectContainers{}}
+
+	if db.driver.GetName() == "sqlite3" {
+		_, err := db.conn.Exec(`
 			CREATE TABLE IF NOT EXISTS project_containers (
 				project_id INTEGER NOT NULL,
 				container_id TEXT NOT NULL,
@@ -26,7 +27,7 @@ func InitProjectContainersTable(conn *sql.DB, driver drivers.Driver) error {
 		return err
 	}
 
-	_, err := conn.Exec(`
+	_, err := db.conn.Exec(`
 		CREATE TABLE IF NOT EXISTS project_containers (
 			project_id SERIAL NOT NULL,
 			container_id TEXT NOT NULL,
