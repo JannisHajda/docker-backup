@@ -1,5 +1,7 @@
 package db
 
+import "fmt"
+
 type ProjectsTable struct {
 	db       *Database
 	projects []*Project
@@ -15,8 +17,18 @@ type ProjectAlreadyExistsError struct {
 	Err  error
 }
 
+type ProjectNotFoundError struct {
+	Id   int64
+	Name string
+	Err  error
+}
+
 func (pae ProjectAlreadyExistsError) Error() string {
 	return "Project with name " + pae.Name + " already exists"
+}
+
+func (pne ProjectNotFoundError) Error() string {
+	return "Project with id " + fmt.Sprint(pne.Id) + " and name " + pne.Name + " not found"
 }
 
 func (db *Database) InitProjectsTable() error {
@@ -81,6 +93,10 @@ func (pt *ProjectsTable) GetById(id int64) (*Project, error) {
 	`, id).Scan(&p.Id, &p.Name)
 
 	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			return nil, ProjectNotFoundError{Id: id}
+		}
+
 		return nil, err
 	}
 
@@ -97,6 +113,10 @@ func (pt *ProjectsTable) GetByName(name string) (*Project, error) {
 	`, name).Scan(&p.Id, &p.Name)
 
 	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			return nil, ProjectNotFoundError{Name: name}
+		}
+
 		return nil, err
 	}
 

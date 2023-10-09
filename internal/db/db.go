@@ -86,6 +86,23 @@ func (db *Database) AddProject(name string) error {
 	return nil
 }
 
+func (db *Database) GetProjectByName(name string) (*Project, error) {
+	for _, project := range db.projects {
+		if project.Name == name {
+			return project, nil
+		}
+	}
+
+	p, err := db.pt.GetByName(name)
+
+	if err != nil {
+		return nil, err
+	}
+
+	db.projects = append(db.projects, p)
+	return p, nil
+}
+
 func (db *Database) Close() error {
 	return db.conn.Close()
 }
