@@ -15,7 +15,7 @@ func TestSqliteGetName(t *testing.T) {
 
 func TestSqliteGetConnectionString(t *testing.T) {
 	d := newTestSqliteDriver()
-	expected := "file::memory:?cache=shared"
+	expected := "file::memory:?cache=shared&_foreign_keys=on"
 	if d.GetConnectionString() != expected {
 		t.Error("Expected ", expected, ", got ", d.GetConnectionString())
 	}

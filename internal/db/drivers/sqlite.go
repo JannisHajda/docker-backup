@@ -10,5 +10,5 @@ func (sq SqliteDriver) GetName() string {
 }
 
 func (sq SqliteDriver) GetConnectionString() string {
-	return fmt.Sprintf("file::memory:?cache=shared")
+	return fmt.Sprintf("file::memory:?cache=shared&_foreign_keys=on")
 }
