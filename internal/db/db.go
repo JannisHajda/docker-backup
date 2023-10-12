@@ -24,6 +24,12 @@ func Connect(driver drivers.Driver) (*Database, error) {
 		return nil, err
 	}
 
+	err = conn.Ping()
+
+	if err != nil {
+		return nil, err
+	}
+
 	return &Database{conn: conn, driver: driver}, nil
 }
 
