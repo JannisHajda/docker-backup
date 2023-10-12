@@ -117,3 +117,26 @@ func TestGetNonExistingContainerInTableById(t *testing.T) {
 	_, ok := err.(ContainerNotFoundError)
 	assert.True(t, ok)
 }
+
+func TestGetOrCreateContainerInTable(t *testing.T) {
+	db, err := getTestingDb()
+	require.NoError(t, err)
+
+	defer db.Close()
+
+	c, err := db.ct.GetOrCreate("asdfasdf", "test")
+	require.NoError(t, err)
+
+	assert.Len(t, db.ct.containers, 1)
+
+	assert.Equal(t, c.Id, db.ct.containers[0].Id)
+	assert.Equal(t, c.Name, db.ct.containers[0].Name)
+
+	c2, err := db.ct.GetOrCreate("asdfasdf", "test")
+	require.NoError(t, err)
+
+	assert.Len(t, db.ct.containers, 1)
+
+	assert.Equal(t, c.Id, c2.Id)
+	assert.Equal(t, c.Name, c2.Name)
+}

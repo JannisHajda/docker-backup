@@ -37,8 +37,6 @@ func main() {
 	}
 
 	err = db.AddProject("test2")
-	err = db.AddProject("test2")
-	err = db.AddProject("test")
 
 	if err != nil {
 		panic(err)

@@ -93,3 +93,17 @@ func (ct *ContainersTable) GetByName(name string) (*Container, error) {
 
 	return c, nil
 }
+
+func (ct *ContainersTable) GetOrCreate(id, name string) (*Container, error) {
+	c, err := ct.GetById(id)
+
+	if err != nil {
+		if _, ok := err.(ContainerNotFoundError); ok {
+			return ct.Add(id, name)
+		}
+
+		return nil, err
+	}
+
+	return c, nil
+}
