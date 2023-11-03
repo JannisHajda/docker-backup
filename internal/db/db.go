@@ -30,7 +30,14 @@ func Connect(driver drivers.Driver) (*Database, error) {
 		return nil, err
 	}
 
-	return &Database{conn: conn, driver: driver}, nil
+	db := &Database{conn: conn, driver: driver}
+	err = db.InitTables()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func (db *Database) InitTables() error {
