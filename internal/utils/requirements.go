@@ -2,6 +2,7 @@ package utils
 
 import (
 	"os"
+	"os/exec"
 )
 
 type NoAccessToDockerSocketError struct {
@@ -48,7 +49,14 @@ func (bnpe BorgNoPermissionError) Error() string {
 }
 
 func EnsureBorgInstalled() error {
-	_, err := os.Stat("/usr/bin/borg")
+	// run borg --version
+	// if it fails, return BorgNotInstalledError
+	// if it succeeds, return nil
+	cmd := exec.Command("borg", "--version")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
 
 	if os.IsNotExist(err) {
 		return BorgNotInstalledError{Err: err}
