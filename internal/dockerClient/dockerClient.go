@@ -27,7 +27,18 @@ func NewDockerClient() (*DockerClient, error) {
 	}, nil
 }
 
-func (dc *DockerClient) GetContainer(id string) (*docker.Container, error) {
+type DockerContainer struct {
+	ID      string
+	Name    string
+	Volumes []DockerVolume
+}
+
+type DockerVolume struct {
+	Name     string
+	ReadOnly bool
+}
+
+func (dc *DockerClient) GetContainer(id string) (*DockerContainer, error) {
 	opts := docker.InspectContainerOptions{
 		ID: id,
 	}
@@ -38,7 +49,27 @@ func (dc *DockerClient) GetContainer(id string) (*docker.Container, error) {
 		return nil, err
 	}
 
-	return c, nil
+	return &DockerContainer{
+		ID:      c.ID,
+		Name:    c.Name,
+		Volumes: getContainerVolumes(c),
+	}, nil
+}
+
+func getContainerVolumes(c *docker.Container) []DockerVolume {
+	mounts := c.HostConfig.Mounts
+	volumes := []DockerVolume{}
+
+	for _, m := range mounts {
+		if m.Type == "volume" {
+			volumes = append(volumes, DockerVolume{
+				Name:     m.Source,
+				ReadOnly: m.ReadOnly,
+			})
+		}
+	}
+
+	return volumes
 }
 
 func (dc *DockerClient) GetAllContainers() ([]docker.APIContainers, error) {
