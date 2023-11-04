@@ -122,3 +122,32 @@ func (pt *ProjectsTable) GetByName(name string) (*Project, error) {
 
 	return p, nil
 }
+
+func (pt *ProjectsTable) GetAll() ([]*Project, error) {
+	rows, err := pt.db.conn.Query(`
+		SELECT id, name
+		FROM projects;
+	`)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	projects := []*Project{}
+
+	for rows.Next() {
+		p := &Project{}
+
+		err := rows.Scan(&p.Id, &p.Name)
+
+		if err != nil {
+			return nil, err
+		}
+
+		projects = append(projects, p)
+	}
+
+	return projects, nil
+}

@@ -103,3 +103,21 @@ func TestAddDuplicateProjectToTable(t *testing.T) {
 
 	assert.Nil(t, p)
 }
+
+func TestGetAllProjectsInTable(t *testing.T) {
+	db, err := getTestingDb()
+	require.NoError(t, err)
+
+	defer db.Close()
+
+	_, err = db.pt.Add("test")
+	require.NoError(t, err)
+
+	_, err = db.pt.Add("test2")
+	require.NoError(t, err)
+
+	projects, err := db.pt.GetAll()
+	require.NoError(t, err)
+
+	assert.Len(t, projects, 2)
+}

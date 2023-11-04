@@ -116,6 +116,10 @@ func (db *Database) GetProjectByName(name string) (*Project, error) {
 	return p, nil
 }
 
+func (db *Database) GetAllProjects() ([]*Project, error) {
+	return db.pt.GetAll()
+}
+
 func (db *Database) Close() error {
 	return db.conn.Close()
 }

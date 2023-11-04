@@ -68,3 +68,25 @@ func TestAddProject(t *testing.T) {
 
 	err = db.Close()
 }
+
+func TestGetAllProjects(t *testing.T) {
+	db, err := getTestingDb()
+	require.NoError(t, err)
+
+	err = db.AddProject("test")
+	require.NoError(t, err)
+
+	err = db.AddProject("test2")
+	require.NoError(t, err)
+
+	projects, err := db.GetAllProjects()
+	require.NoError(t, err)
+
+	assert.Len(t, projects, 2)
+
+	assert.Equal(t, "test", projects[0].Name)
+	assert.Equal(t, "test2", projects[1].Name)
+
+	err = db.Close()
+	require.NoError(t, err)
+}
