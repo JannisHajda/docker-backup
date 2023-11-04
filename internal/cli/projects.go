@@ -9,6 +9,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func getDriver() drivers.Driver {
+	driver := drivers.PostgresDriver{
+		User:     os.Getenv("PG_USER"),
+		Password: os.Getenv("PG_PASSWORD"),
+		Host:     os.Getenv("PG_HOST"),
+		Port:     os.Getenv("PG_PORT"),
+		Database: os.Getenv("PG_DATABASE"),
+		Sslmode:  os.Getenv("PG_SSLMODE"),
+	}
+	return driver
+}
+
 var projectsCmd = &cobra.Command{
 	Use:   "projects",
 	Short: "Manage projects",
@@ -18,7 +30,7 @@ var projectsCmd = &cobra.Command{
 	},
 }
 
-var initCmd = &cobra.Command{
+var initProject = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize a new project",
 	Long:  `Create a new project with the specified name.`,
@@ -39,14 +51,7 @@ var initCmd = &cobra.Command{
 			return
 		}
 
-		driver := drivers.PostgresDriver{
-			User:     os.Getenv("PG_USER"),
-			Password: os.Getenv("PG_PASSWORD"),
-			Host:     os.Getenv("PG_HOST"),
-			Port:     os.Getenv("PG_PORT"),
-			Database: os.Getenv("PG_DATABASE"),
-			Sslmode:  os.Getenv("PG_SSLMODE"),
-		}
+		driver := getDriver()
 
 		db, err := db.Connect(driver)
 		defer db.Close()
@@ -68,10 +73,40 @@ var initCmd = &cobra.Command{
 	},
 }
 
+var listProjects = &cobra.Command{
+	Use:   "list",
+	Short: "List all projects",
+	Long:  `List all projects.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		driver := getDriver()
+
+		db, err := db.Connect(driver)
+		defer db.Close()
+
+		if err != nil {
+			println(err.Error())
+			return
+		}
+
+		projects, err := db.GetAllProjects()
+
+		if err != nil {
+			println(err.Error())
+			return
+		}
+
+		for _, project := range projects {
+			println(project.Name)
+		}
+	},
+}
+
 func init() {
-	initCmd.Flags().StringP("name", "n", "", "Name of the project")
-	initCmd.MarkFlagRequired("name") // Make the name flag required
-	projectsCmd.AddCommand(initCmd)
+	initProject.Flags().StringP("name", "n", "", "Name of the project")
+	initProject.MarkFlagRequired("name") // Make the name flag required
+
+	projectsCmd.AddCommand(initProject)
+	projectsCmd.AddCommand(listProjects)
 }
 
 type Project struct {
