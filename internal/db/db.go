@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"strings"
 
 	"github.com/JannisHajda/docker-backup/internal/db/drivers"
 	_ "github.com/lib/pq"
@@ -9,30 +10,48 @@ import (
 )
 
 type Database struct {
-	conn     *sql.DB
-	driver   drivers.Driver
-	pt       *ProjectsTable
-	ct       *ContainersTable
-	pct      *ProjectContainersTable
-	projects []*Project
+	driver drivers.Driver
+	pt     *ProjectsTable
+	ct     *ContainersTable
+	pct    *ProjectContainersTable
 }
 
-func Connect(driver drivers.Driver) (*Database, error) {
-	conn, err := sql.Open(driver.GetName(), driver.GetConnectionString())
+type SQLCommand struct {
+	postgres string
+	sqlite3  string
+}
 
+func (db *Database) testConnection() error {
+	connection, err := db.connect()
+
+	if err != nil {
+		return err
+	}
+
+	defer connection.Close()
+
+	return connection.Ping()
+}
+
+func NewDatabase(driver drivers.Driver) (*Database, error) {
+	db := &Database{driver: driver}
+
+	err := db.testConnection()
 	if err != nil {
 		return nil, err
 	}
 
-	err = conn.Ping()
-
+	db.pt, err = newProjectsTable(db)
 	if err != nil {
 		return nil, err
 	}
 
-	db := &Database{conn: conn, driver: driver}
-	err = db.InitTables()
+	db.ct, err = newContainersTable(db)
+	if err != nil {
+		return nil, err
+	}
 
+	db.pct, err = newProjectContainersTable(db)
 	if err != nil {
 		return nil, err
 	}
@@ -40,86 +59,106 @@ func Connect(driver drivers.Driver) (*Database, error) {
 	return db, nil
 }
 
-func (db *Database) InitTables() error {
-	err := db.InitProjectsTable()
-
-	if err != nil {
-		return err
-	}
-
-	err = db.InitContainersTable()
-
-	if err != nil {
-		return err
-	}
-
-	err = db.InitProjectContainersTable()
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (db *Database) IsUniqueViolationError(err error) bool {
+	return strings.Contains(err.Error(), db.driver.UniqueViolationError())
 }
 
-func (db *Database) GetConnection() *sql.DB {
-	return db.conn
+func (db *Database) IsNoRowsError(err error) bool {
+	return strings.Contains(err.Error(), db.driver.NoRowsError())
 }
 
-func (db *Database) AddProject(name string) error {
-
-	if len(db.projects) != 0 {
-		for _, project := range db.projects {
-			if project.Name == name {
-				return ProjectAlreadyExistsError{Name: name, Err: nil}
-			}
-		}
-	}
-
-	p, err := db.pt.Add(name)
-
-	if err != nil {
-		_, ok := err.(ProjectAlreadyExistsError)
-
-		if ok {
-			p, err := db.pt.GetByName(name)
-
-			if err != nil {
-				return err
-			}
-
-			db.projects = append(db.projects, p)
-			return ProjectAlreadyExistsError{Name: name, Err: err}
-		}
-
-		return err
-	}
-
-	db.projects = append(db.projects, p)
-	return nil
-}
-
-func (db *Database) GetProjectByName(name string) (*Project, error) {
-	for _, project := range db.projects {
-		if project.Name == name {
-			return project, nil
-		}
-	}
-
-	p, err := db.pt.GetByName(name)
+func (db *Database) connect() (*sql.DB, error) {
+	c, err := sql.Open(db.driver.GetName(), db.driver.GetConnectionString())
 
 	if err != nil {
 		return nil, err
 	}
 
-	db.projects = append(db.projects, p)
-	return p, nil
+	return c, nil
+}
+
+func (db *Database) execute(command SQLCommand, args ...interface{}) (sql.Result, error) {
+	connection, err := db.connect()
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer connection.Close()
+
+	if db.driver.GetName() == "sqlite3" {
+		return connection.Exec(command.sqlite3, args...)
+	}
+
+	return connection.Exec(command.postgres, args...)
+}
+
+func (db *Database) queryRow(command SQLCommand, args ...any) (*sql.Row, error) {
+	connection, err := db.connect()
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer connection.Close()
+
+	if db.driver.GetName() == "sqlite3" {
+		return connection.QueryRow(command.sqlite3, args...), nil
+	}
+
+	return connection.QueryRow(command.postgres, args...), nil
+}
+
+func (db *Database) query(command SQLCommand, args ...any) (*sql.Rows, error) {
+	connection, err := db.connect()
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer connection.Close()
+
+	if db.driver.GetName() == "sqlite3" {
+		return connection.Query(command.sqlite3, args...)
+	}
+
+	return connection.Query(command.postgres, args...)
 }
 
 func (db *Database) GetAllProjects() ([]*Project, error) {
-	return db.pt.GetAll()
+	return db.pt.getAll()
 }
 
-func (db *Database) Close() error {
-	return db.conn.Close()
+func (db *Database) GetProjectByName(name string) (*Project, error) {
+	return db.pt.getByName(name)
+}
+
+func (db *Database) AddProject(name string) (*Project, error) {
+	return db.pt.add(name)
+}
+
+func (db *Database) GetContainerByID(id string) (*Container, error) {
+	return db.ct.getByID(id)
+}
+
+func (db *Database) GetAllContainers() ([]*Container, error) {
+	return db.ct.getAll()
+}
+
+func (db *Database) AddContainer(id string, name string) (*Container, error) {
+	return db.ct.add(id, name)
+}
+
+func (db *Database) GetOrAddContainer(id string, name string) (*Container, error) {
+	container, err := db.GetContainerByID(id)
+
+	if err != nil && db.IsNoRowsError(err) {
+		return db.AddContainer(id, name)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return container, err
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/JannisHajda/docker-backup/internal/borgClient"
 	"github.com/JannisHajda/docker-backup/internal/db"
 	"github.com/JannisHajda/docker-backup/internal/db/drivers"
+	"github.com/JannisHajda/docker-backup/internal/dockerClient"
 	"github.com/spf13/cobra"
 )
 
@@ -37,14 +38,14 @@ var initProject = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		name, _ := cmd.Flags().GetString("name")
 
-		bc, err := borgClient.NewBorgClient()
+		bc, err := borgClient.NewBorgClient("./backup")
 
 		if err != nil {
 			println(err.Error())
 			return
 		}
 
-		err = bc.InitializeRepo(name, "./backup")
+		err = bc.InitializeRepo(name)
 
 		if err != nil {
 			println(err.Error())
@@ -53,22 +54,27 @@ var initProject = &cobra.Command{
 
 		driver := getDriver()
 
-		db, err := db.Connect(driver)
-		defer db.Close()
+		var errs []error
 
+		database, err := db.NewDatabase(driver)
 		if err != nil {
-			println(err.Error())
+			errs = append(errs, err)
 			return
 		}
 
-		err = db.AddProject(name)
-
+		project, err := database.AddProject(name)
 		if err != nil {
-			println(err.Error())
+			errs = append(errs, err)
 			return
 		}
 
-		project := Project{Name: name}
+		if len(errs) > 0 {
+			for _, err := range errs {
+				println(err.Error())
+			}
+			return
+		}
+
 		println("Project " + project.Name + " initialized")
 	},
 }
@@ -79,16 +85,14 @@ var listProjects = &cobra.Command{
 	Long:  `List all projects.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		driver := getDriver()
-
-		db, err := db.Connect(driver)
-		defer db.Close()
+		database, err := db.NewDatabase(driver)
 
 		if err != nil {
 			println(err.Error())
 			return
 		}
 
-		projects, err := db.GetAllProjects()
+		projects, err := database.GetAllProjects()
 
 		if err != nil {
 			println(err.Error())
@@ -101,11 +105,76 @@ var listProjects = &cobra.Command{
 	},
 }
 
+var addContainer = &cobra.Command{
+	Use:   "add-container",
+	Short: "Add a container to a project",
+	Long:  `Add a container to a project.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectName, _ := cmd.Flags().GetString("project")
+		containerID, _ := cmd.Flags().GetString("container")
+
+		driver := getDriver()
+
+		database, err := db.NewDatabase(driver)
+
+		if err != nil {
+			println(err.Error())
+			return
+		}
+
+		project, err := database.GetProjectByName(projectName)
+
+		if err != nil {
+			println(err.Error())
+			return
+		}
+
+		docker, err := dockerClient.NewDockerClient()
+		if err != nil {
+			println(err.Error())
+			return
+		}
+
+		dockerContainer, err := docker.GetContainerByID(containerID)
+		if err != nil {
+			println(err.Error())
+			return
+		}
+
+		container, err := database.GetOrAddContainer(dockerContainer.ID, dockerContainer.Name)
+
+		if err != nil {
+			println(err.Error())
+			return
+		}
+
+		err = project.AddContainer(container.ID)
+
+		if err != nil {
+			if database.IsUniqueViolationError(err) {
+				println("Container already added to project")
+				return
+			}
+
+			println(err.Error())
+			return
+		}
+
+		println("Container " + container.Name + " (" + container.ID + ") added to project " + project.Name)
+	},
+}
+
 func init() {
 	initProject.Flags().StringP("name", "n", "", "Name of the project")
 	initProject.MarkFlagRequired("name") // Make the name flag required
 
+	addContainer.Flags().StringP("project", "p", "", "Name of the project")
+	addContainer.Flags().StringP("container", "c", "", "ID of the container")
+	addContainer.MarkFlagRequired("project")
+	addContainer.MarkFlagRequired("container")
+
 	projectsCmd.AddCommand(initProject)
+	projectsCmd.AddCommand(addContainer)
 	projectsCmd.AddCommand(listProjects)
 }
 

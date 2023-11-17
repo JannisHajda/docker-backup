@@ -38,7 +38,7 @@ type DockerVolume struct {
 	ReadOnly bool
 }
 
-func (dc *DockerClient) GetContainer(id string) (*DockerContainer, error) {
+func (dc *DockerClient) GetContainerByID(id string) (*DockerContainer, error) {
 	opts := docker.InspectContainerOptions{
 		ID: id,
 	}

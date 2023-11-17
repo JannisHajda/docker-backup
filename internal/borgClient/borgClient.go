@@ -8,16 +8,17 @@ import (
 )
 
 type BorgClient struct {
+	path string
 }
 
-func NewBorgClient() (*BorgClient, error) {
+func NewBorgClient(path string) (*BorgClient, error) {
 	err := utils.EnsureBorgInstalled()
 
 	if err != nil {
 		return nil, err
 	}
 
-	return &BorgClient{}, nil
+	return &BorgClient{path: path}, nil
 }
 
 type BorgRepoAlreadyExistsError struct {
@@ -28,9 +29,9 @@ func (brae BorgRepoAlreadyExistsError) Error() string {
 	return "Borg repo already exists"
 }
 
-func (bc *BorgClient) InitializeRepo(name string, path string) error {
+func (bc *BorgClient) InitializeRepo(name string) error {
 	// Check if the repo directory already exists
-	_, err := os.Stat(path)
+	_, err := os.Stat(bc.path)
 	if err == nil {
 		return BorgRepoAlreadyExistsError{Err: err}
 	} else if !os.IsNotExist(err) {
@@ -38,13 +39,13 @@ func (bc *BorgClient) InitializeRepo(name string, path string) error {
 	}
 
 	// Create the repo folder
-	err = os.MkdirAll(path, 0755)
+	err = os.MkdirAll(bc.path, 0755)
 	if err != nil {
 		return err
 	}
 
 	// Initialize the repo
-	cmd := exec.Command("borg", "init", "--encryption=repokey", path)
+	cmd := exec.Command("borg", "init", "--encryption=repokey", bc.path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

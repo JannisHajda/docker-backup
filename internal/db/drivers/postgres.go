@@ -28,3 +28,11 @@ func (pg PostgresDriver) GetConnectionString() string {
 		pg.Sslmode,
 	)
 }
+
+func (pg PostgresDriver) NoRowsError() string {
+	return "no rows in result set"
+}
+
+func (pg PostgresDriver) UniqueViolationError() string {
+	return "duplicate key value violates unique constraint"
+}
