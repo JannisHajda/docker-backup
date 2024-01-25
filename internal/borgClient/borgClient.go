@@ -1,56 +1,129 @@
-package borgClient
+package borgclient
 
 import (
-	"os"
-	"os/exec"
-
-	"github.com/JannisHajda/docker-backup/internal/utils"
+	"docker-backup/errors"
+	"docker-backup/interfaces"
+	"fmt"
+	"regexp"
 )
 
 type BorgClient struct {
-	path string
+	worker interfaces.Worker
 }
 
-func NewBorgClient(path string) (*BorgClient, error) {
-	err := utils.EnsureBorgInstalled()
+func (b *BorgClient) handleError(e error) error {
+	output := e.Error()
+	if b.isRepositoryDoesNotExistError(output) {
+		return errors.NewRepositoryDoesNotExistError(e)
+	}
+
+	if b.isRepositoryParentDirectoryDoesNotExistError(output) {
+		return errors.NewRepositoryParentDirectoryDoesNotExistError(e)
+	}
+
+	if b.isRepositoryAlreadyExistsError(output) {
+		return errors.NewRepositoryAlreadyExistsError(e)
+	}
+
+	return fmt.Errorf("unknown error")
+}
+
+func (b *BorgClient) isRepositoryDoesNotExistError(output string) bool {
+	re := regexp.MustCompile(`Repository (.*) does not exist.`)
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (b *BorgClient) isRepositoryParentDirectoryDoesNotExistError(output string) bool {
+	re := regexp.MustCompile(`parent path of the repo directory (.*) does not exist`)
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (b *BorgClient) isRepositoryAlreadyExistsError(output string) bool {
+	re := regexp.MustCompile(`repository already exists at`)
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (b *BorgClient) ensureBorgIsInstalled() error {
+	_, err := b.worker.Exec("borg --version")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func NewBorgClient(w interfaces.Worker) (interfaces.BorgClient, error) {
+	bc := &BorgClient{worker: w}
+	err := bc.ensureBorgIsInstalled()
 
 	if err != nil {
 		return nil, err
 	}
 
-	return &BorgClient{path: path}, nil
+	return bc, nil
 }
 
-type BorgRepoAlreadyExistsError struct {
-	Err error
-}
+func (b *BorgClient) GetRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
+	b.worker.SetEnv("BORG_PASSPHRASE", passphrase)
 
-func (brae BorgRepoAlreadyExistsError) Error() string {
-	return "Borg repo already exists"
-}
-
-func (bc *BorgClient) InitializeRepo(name string) error {
-	// Check if the repo directory already exists
-	_, err := os.Stat(bc.path)
-	if err == nil {
-		return BorgRepoAlreadyExistsError{Err: err}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	// Create the repo folder
-	err = os.MkdirAll(bc.path, 0755)
+	_, err := b.worker.Exec("borg list " + path)
 	if err != nil {
-		return err
+		err = b.handleError(err)
+		return nil, err
 	}
 
-	// Initialize the repo
-	cmd := exec.Command("borg", "init", "--encryption=repokey", bc.path)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return err
+	return NewBorgRepository(b, path, passphrase)
+}
+
+func (b *BorgClient) CreateRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
+	b.worker.SetEnv("BORG_PASSPHRASE", passphrase)
+
+	_, err := b.worker.Exec("borg init " + path + " -e repokey-blake2 --make-parent-dirs")
+	if err != nil {
+		err = b.handleError(err)
+		return nil, err
 	}
+
+	return NewBorgRepository(b, path, passphrase)
+}
+
+// create/get all repositories
+// extract key from config file for new repositories
+func (b *BorgClient) PreBackup() error {
 
 	return nil
+}
+
+func (b *BorgClient) GetOrCreateRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
+	repo, err := b.GetRepository(path, passphrase)
+	if err != nil {
+		if _, ok := err.(*errors.RepositoryDoesNotExistError); ok {
+			repo, err = b.CreateRepository(path, passphrase)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+
+	return repo, nil
 }

@@ -1,85 +1,82 @@
-package dockerClient
+package dockerclient
 
 import (
-	"github.com/JannisHajda/docker-backup/internal/utils"
-	docker "github.com/fsouza/go-dockerclient"
+	"context"
+	"docker-backup/interfaces"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/client"
+
+	"os/exec"
 )
 
 type DockerClient struct {
-	client *docker.Client
+	client client.Client
 }
 
-func NewDockerClient() (*DockerClient, error) {
-	err := utils.EnsureAccessToDockerSocket()
+func ensureDockerIsInstalled() error {
+	cmd := exec.Command("docker", "version")
+	err := cmd.Run()
 
+	return err
+}
+
+func NewDockerClient() (interfaces.DockerClient, error) {
+	err := ensureDockerIsInstalled()
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := docker.NewClientFromEnv()
-
+	client, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DockerClient{
-		client: client,
-	}, nil
+	return &DockerClient{client: *client}, nil
 }
 
-type DockerContainer struct {
-	ID      string
-	Name    string
-	Volumes []DockerVolume
-}
-
-type DockerVolume struct {
-	Name     string
-	ReadOnly bool
-}
-
-func (dc *DockerClient) GetContainerByID(id string) (*DockerContainer, error) {
-	opts := docker.InspectContainerOptions{
-		ID: id,
-	}
-
-	c, err := dc.client.InspectContainerWithOptions(opts)
-
+func (d *DockerClient) GetContainer(id string) (interfaces.DockerContainer, error) {
+	c, err := d.client.ContainerInspect(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DockerContainer{
-		ID:      c.ID,
-		Name:    c.Name,
-		Volumes: getContainerVolumes(c),
-	}, nil
-}
-
-func getContainerVolumes(c *docker.Container) []DockerVolume {
-	mounts := c.HostConfig.Mounts
-	volumes := []DockerVolume{}
-
-	for _, m := range mounts {
-		if m.Type == "volume" {
-			volumes = append(volumes, DockerVolume{
-				Name:     m.Source,
-				ReadOnly: m.ReadOnly,
-			})
+	var volumes []interfaces.DockerVolume
+	for _, v := range c.Mounts {
+		if v.Type == "volume" {
+			volumes = append(volumes, NewDockerVolume(v.Name, v.RW))
 		}
 	}
 
-	return volumes
+	return NewDockerContainer(d, c.ID, c.Name, volumes), nil
 }
 
-func (dc *DockerClient) GetAllContainers() ([]docker.APIContainers, error) {
-	opts := docker.ListContainersOptions{}
+func (d *DockerClient) CreateContainer(image string, volumes []interfaces.DockerVolume) (interfaces.DockerContainer, error) {
+	hostConfig := &container.HostConfig{
+		Mounts: []mount.Mount{},
+	}
 
-	containers, err := dc.client.ListContainers(opts)
+	for _, v := range volumes {
+		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+			Type:   "volume",
+			Source: v.GetName(),
+			Target: v.GetMountPoint(),
+		})
+	}
+
+	c, err := d.client.ContainerCreate(context.Background(), &container.Config{
+		Image: image,
+	}, hostConfig, nil, nil, "")
 
 	if err != nil {
 		return nil, err
 	}
 
-	return containers, nil
+	container, err := d.GetContainer(c.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewDockerContainer(d, container.GetID(), container.GetName(), volumes), nil
 }
