@@ -54,8 +54,27 @@ func Execute() {
 	}
 }
 
+var backupContainerCmd = &cobra.Command{
+	Use:   "backup-container",
+	Short: "Backup a container",
+	Long:  `Backup a container`,
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		worker, err := NewWorker()
+		if err != nil {
+			panic(err)
+		}
+
+		err = worker.BackupContainer(args[0])
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
 func init() {
 	_ = getDbClient()
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	rootCmd.AddCommand(projectsCmd)
+	backupContainerCmd.Root()
 }

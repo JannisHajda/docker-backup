@@ -3,141 +3,137 @@ package worker
 import (
 	"docker-backup/interfaces"
 	"docker-backup/internal/borgclient"
-	"fmt"
-	"regexp"
-	"strings"
+	"docker-backup/internal/db"
+	"docker-backup/internal/db/driver"
+	"docker-backup/internal/dockerclient"
 )
 
 type Worker struct {
-	db      interfaces.DatabaseClient
-	dc      interfaces.DockerClient
-	c       interfaces.DockerContainer
-	bc      interfaces.BorgClient
-	project interfaces.DatabaseProject
+	db        interfaces.DatabaseClient
+	dc        interfaces.DockerClient
+	container interfaces.DockerContainer
 }
 
-func NewWorker(db interfaces.DatabaseClient, dc interfaces.DockerClient, project interfaces.DatabaseProject) (interfaces.Worker, error) {
-	w := &Worker{db: db, dc: dc, project: project}
-
-	containers, err := project.GetContainers()
+func getDbClient() interfaces.DatabaseClient {
+	driver, err := driver.NewPostgresDriver("postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
-	var dockerContainers []interfaces.DockerContainer
+	client, err := db.NewDatabaseClient(driver)
+	if err != nil {
+		panic(err)
+	}
+
+	return client
+}
+
+func getDockerClient() interfaces.DockerClient {
+	client, err := dockerclient.NewDockerClient()
+	if err != nil {
+		panic(err)
+	}
+
+	return client
+}
+
+func NewWorker() (interfaces.Worker, error) {
+	dbClient := getDbClient()
+	dockerClient := getDockerClient()
+
+	return &Worker{
+		db: dbClient,
+		dc: dockerClient,
+	}, nil
+}
+
+func (w *Worker) BackupContainer(containerIdentifier string) error {
+	dockerContainer, err := w.dc.GetContainer(containerIdentifier)
+	if err != nil {
+		return err
+	}
+
+	dbContainer, err := w.db.GetOrAddContainer(dockerContainer.GetID(), dockerContainer.GetName())
+	if err != nil {
+		return err
+	}
+
+	dockerVolumes := dockerContainer.GetVolumes()
 	var errs []error
-	for _, container := range containers {
-		dockerContainer, err := dc.GetContainer(container.GetID())
+	for _, dockerVolume := range dockerVolumes {
+		dockerVolume.SetMountPoint("/input/" + dockerVolume.GetName())
+
+		dbVolume, err := w.db.GetOrAddVolume(dockerVolume.GetName())
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 
-		dockerContainers = append(dockerContainers, dockerContainer)
-	}
-
-	volumesMap := make(map[string]interfaces.DockerVolume)
-	for _, dockerContainer := range dockerContainers {
-		for _, dockerVolume := range dockerContainer.GetVolumes() {
-			volumesMap[dockerVolume.GetName()] = dockerVolume
+		err = dbContainer.AddVolume(dbVolume)
+		if err != nil {
+			errs = append(errs, err)
+			continue
 		}
 	}
 
-	var volumes []interfaces.DockerVolume
-	for _, dockerVolume := range volumesMap {
-		dockerVolume.SetMountPoint("/input/" + dockerVolume.GetName())
-		volumes = append(volumes, dockerVolume)
+	if len(errs) > 0 {
+		return errs[0]
 	}
 
-	w.c, err = dc.CreateContainer("docker-backup", volumes)
+	_, err = dockerContainer.Exec("touch /test-volume1/test-file && touch /test-volume2/test-file")
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	w.bc, err = borgclient.NewBorgClient(w)
+	err = dockerContainer.Stop()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return w, nil
-}
+	defer dockerContainer.Start()
 
-func extractKeyFromConfig(configContent string) (string, error) {
-	// Define a regular expression pattern to match the key value
-	re := regexp.MustCompile(`key\s*=\s*([^\n]+)`)
-
-	// Find the matches in the config content
-	matches := re.FindStringSubmatch(configContent)
-
-	// Check if a match is found
-	if len(matches) < 2 {
-		return "", fmt.Errorf("key not found in config content")
+	workerContainer, err := w.dc.CreateContainer("worker", dockerVolumes)
+	if err != nil {
+		return err
 	}
 
-	// Extract the key value from the match
-	key := strings.TrimSpace(matches[1])
+	err = workerContainer.Start()
+	if err != nil {
+		return err
+	}
 
-	return key, nil
-}
+	defer workerContainer.StopAndRemove()
 
-func (w *Worker) Backup() error {
-	var errors []error
-	volumes := w.c.GetVolumes()
-	for _, v := range volumes {
-		repo, err := w.bc.GetOrCreateRepository("/output/"+v.GetName(), "test123")
+	bc, err := borgclient.NewBorgClient(workerContainer, "/input", "/output")
+	if err != nil {
+		return err
+	}
+
+	errs = []error{}
+	for _, dockerVolume := range dockerVolumes {
+		repo, err := bc.GetOrCreateRepository(dockerVolume.GetName(), "test")
 		if err != nil {
-			errors = append(errors, err)
+			errs = append(errs, err)
 			continue
 		}
 
-		err = repo.Archive(v.GetMountPoint())
+		err = repo.Backup()
 		if err != nil {
-			errors = append(errors, err)
+			errs = append(errs, err)
+			continue
 		}
 	}
 
-	if len(errors) > 0 {
-		return errors[0]
+	err = workerContainer.Start()
+	if err != nil {
+		return err
 	}
 
-	// for each repo: extract key from config file
-	for _, v := range volumes {
-		output, err := w.c.Exec("cat /output/" + v.GetName() + "/config")
-		if err != nil {
-			return err
-		}
-
-		key, err := extractKeyFromConfig(output)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Key: %s\n", key)
-	}
+	err = workerContainer.StopAndRemove()
 
 	return nil
 }
 
-func (w *Worker) Exec(command string) (string, error) {
-	return w.c.Exec(command)
-}
-
-func (w *Worker) SetEnv(key, value string) {
-	w.c.SetEnv(key, value)
-}
-
-func (w *Worker) GetEnv(key string) string {
-	return w.c.GetEnv(key)
-}
-
-func (w *Worker) GetEnvs() map[string]string {
-	return w.c.GetEnvs()
-}
-
-func (w *Worker) GetBorgClient() interfaces.BorgClient {
-	return w.bc
-}
-
-func (w *Worker) StopAndRemove() error {
-	return w.c.StopAndRemove()
+func (w *Worker) BackupProject(projectName string) error {
+	return nil
 }

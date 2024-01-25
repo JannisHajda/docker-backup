@@ -7,24 +7,28 @@ import (
 
 type BorgRepository struct {
 	*BorgClient
-	path       string
+	name       string
 	passphrase string
 	key        string
 }
 
-func NewBorgRepository(c *BorgClient, path string, passphrase string) (interfaces.BorgRepository, error) {
+func NewBorgRepository(c *BorgClient, name string, passphrase string) (interfaces.BorgRepository, error) {
 	return &BorgRepository{
-		BorgClient: c, path: path, passphrase: passphrase}, nil
+		BorgClient: c, name: name, passphrase: passphrase}, nil
 }
 
-func (b *BorgRepository) GetPath() string {
-	return b.path
+func (b *BorgRepository) GetName() string {
+	return b.name
 }
 
-func (b *BorgRepository) Archive(inputPath string) error {
-	b.worker.SetEnv("BORG_PASSPHRASE", b.passphrase)
+func (b *BorgRepository) Backup() error {
+	b.container.SetEnv("BORG_PASSPHRASE", b.passphrase)
 	now := time.Now().Format("2006-01-02T15:04:05")
-	_, err := b.worker.Exec("borg create " + b.path + "::" + now + " " + inputPath)
+
+	input := b.inputDir + "/" + b.name
+	output := b.outputDir + "/" + b.name
+
+	_, err := b.container.Exec("borg create " + output + "::" + now + " " + input)
 	if err != nil {
 		return err
 	}

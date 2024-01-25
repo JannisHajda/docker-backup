@@ -8,7 +8,9 @@ import (
 )
 
 type BorgClient struct {
-	worker interfaces.Worker
+	inputDir  string
+	outputDir string
+	container interfaces.DockerContainer
 }
 
 func (b *BorgClient) handleError(e error) error {
@@ -62,7 +64,7 @@ func (b *BorgClient) isRepositoryAlreadyExistsError(output string) bool {
 }
 
 func (b *BorgClient) ensureBorgIsInstalled() error {
-	_, err := b.worker.Exec("borg --version")
+	_, err := b.container.Exec("borg --version")
 	if err != nil {
 		return err
 	}
@@ -70,8 +72,8 @@ func (b *BorgClient) ensureBorgIsInstalled() error {
 	return nil
 }
 
-func NewBorgClient(w interfaces.Worker) (interfaces.BorgClient, error) {
-	bc := &BorgClient{worker: w}
+func NewBorgClient(c interfaces.DockerContainer, inputDir string, outputDir string) (interfaces.BorgClient, error) {
+	bc := &BorgClient{container: c, inputDir: inputDir, outputDir: outputDir}
 	err := bc.ensureBorgIsInstalled()
 
 	if err != nil {
@@ -81,10 +83,11 @@ func NewBorgClient(w interfaces.Worker) (interfaces.BorgClient, error) {
 	return bc, nil
 }
 
-func (b *BorgClient) GetRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
-	b.worker.SetEnv("BORG_PASSPHRASE", passphrase)
+func (b *BorgClient) GetRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
+	path := b.outputDir + "/" + name
+	b.container.SetEnv("BORG_PASSPHRASE", passphrase)
 
-	_, err := b.worker.Exec("borg list " + path)
+	_, err := b.container.Exec("borg list " + path)
 	if err != nil {
 		err = b.handleError(err)
 		return nil, err
@@ -93,10 +96,11 @@ func (b *BorgClient) GetRepository(path string, passphrase string) (interfaces.B
 	return NewBorgRepository(b, path, passphrase)
 }
 
-func (b *BorgClient) CreateRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
-	b.worker.SetEnv("BORG_PASSPHRASE", passphrase)
+func (b *BorgClient) CreateRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
+	path := b.outputDir + "/" + name
+	b.container.SetEnv("BORG_PASSPHRASE", passphrase)
 
-	_, err := b.worker.Exec("borg init " + path + " -e repokey-blake2 --make-parent-dirs")
+	_, err := b.container.Exec("borg init " + path + " -e repokey-blake2 --make-parent-dirs")
 	if err != nil {
 		err = b.handleError(err)
 		return nil, err
@@ -105,18 +109,11 @@ func (b *BorgClient) CreateRepository(path string, passphrase string) (interface
 	return NewBorgRepository(b, path, passphrase)
 }
 
-// create/get all repositories
-// extract key from config file for new repositories
-func (b *BorgClient) PreBackup() error {
-
-	return nil
-}
-
-func (b *BorgClient) GetOrCreateRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
-	repo, err := b.GetRepository(path, passphrase)
+func (b *BorgClient) GetOrCreateRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
+	repo, err := b.GetRepository(name, passphrase)
 	if err != nil {
 		if _, ok := err.(*errors.RepositoryDoesNotExistError); ok {
-			repo, err = b.CreateRepository(path, passphrase)
+			repo, err = b.CreateRepository(name, passphrase)
 			if err != nil {
 				return nil, err
 			}
@@ -126,4 +123,12 @@ func (b *BorgClient) GetOrCreateRepository(path string, passphrase string) (inte
 	}
 
 	return repo, nil
+}
+
+func (b *BorgClient) SetInputDir(inputDir string) {
+	b.inputDir = inputDir
+}
+
+func (b *BorgClient) SetOutputDir(outputDir string) {
+	b.outputDir = outputDir
 }

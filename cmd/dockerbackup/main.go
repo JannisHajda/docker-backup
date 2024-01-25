@@ -1,9 +1,9 @@
 package main
 
 import (
-	"docker-backup/internal/cli"
 	"docker-backup/internal/db"
 	"docker-backup/internal/db/driver"
+	"docker-backup/internal/worker"
 	"fmt"
 )
 
@@ -19,5 +19,15 @@ func main() {
 		return
 	}
 
-	err = cli.BackupProjectCmd("test")
+	worker, err := worker.NewWorker()
+	if err != nil {
+		fmt.Printf("Could not create worker: %s\n", err.Error())
+		return
+	}
+
+	err = worker.BackupContainer("test-service")
+	if err != nil {
+		fmt.Printf("Could not backup container: %s\n", err.Error())
+		return
+	}
 }
