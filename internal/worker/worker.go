@@ -10,6 +10,10 @@ import (
 	"sync"
 )
 
+const (
+	DOCKER_IMAGE = "worker"
+)
+
 type Worker struct {
 	db              interfaces.DatabaseClient
 	dc              interfaces.DockerClient
@@ -18,10 +22,10 @@ type Worker struct {
 	sourceContainer interfaces.DockerContainer
 	sourceVolumes   []interfaces.DockerVolume
 	outputVolume    interfaces.DockerVolume
+	passphrase      string
 }
 
 const (
-	passphrase = "test"
 	sourcePath = "/source"
 	outputPath = "/output"
 )
@@ -61,7 +65,7 @@ func (w *Worker) mountOutputVolume(volume interfaces.DockerVolume) {
 	w.outputVolume = volume
 }
 
-func NewWorker(containerId string, outputVolumeName string) (interfaces.Worker, error) {
+func NewWorker(containerId string, outputVolumeName string, passphrase string) (interfaces.Worker, error) {
 	dc := getDockerClient()
 
 	source, err := dc.GetContainer(containerId)
@@ -78,13 +82,14 @@ func NewWorker(containerId string, outputVolumeName string) (interfaces.Worker, 
 		dc:              dc,
 		sourceContainer: source,
 		outputVolume:    output,
+		passphrase:      passphrase,
 	}
 
 	sourceVolumes := w.getSourceVolumes(source)
 	w.mountSourceVolumes(sourceVolumes)
 	w.mountOutputVolume(output)
 
-	w.workerContainer, err = w.dc.CreateContainer("worker", w.sourceVolumes, nil)
+	w.workerContainer, err = w.dc.CreateContainer(DOCKER_IMAGE, append(w.sourceVolumes, w.outputVolume), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +170,7 @@ func (w *Worker) backupVolumes(volumes []interfaces.DockerVolume) []error {
 }
 
 func (w *Worker) backupVolume(v interfaces.DockerVolume) error {
-	repo, err := w.bc.GetOrCreateRepository(v.GetName(), passphrase)
+	repo, err := w.bc.GetOrCreateRepository(v.GetName(), w.passphrase)
 	if err != nil {
 		return err
 	}
@@ -181,4 +186,12 @@ func (w *Worker) getSourceVolumes(c interfaces.DockerContainer) []interfaces.Doc
 	}
 
 	return volumes
+}
+
+func (w *Worker) Stop() error {
+	if w.workerContainer != nil {
+		return w.workerContainer.StopAndRemove()
+	}
+
+	return nil
 }

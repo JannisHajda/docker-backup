@@ -4,37 +4,12 @@ Copyright © 2024 NAME HERE <EMAIL ADDRESS>
 package cli
 
 import (
-	"docker-backup/interfaces"
-	"docker-backup/internal/db"
-	"docker-backup/internal/db/driver"
-	"docker-backup/internal/dockerclient"
+	"docker-backup/internal/worker"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
-
-func getDbClient() interfaces.DatabaseClient {
-	driver, err := driver.NewPostgresDriver("postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
-	if err != nil {
-		panic(err)
-	}
-
-	client, err := db.NewDatabaseClient(driver)
-	if err != nil {
-		panic(err)
-	}
-
-	return client
-}
-
-func getDockerClient() interfaces.DockerClient {
-	client, err := dockerclient.NewDockerClient()
-	if err != nil {
-		panic(err)
-	}
-
-	return client
-}
 
 var rootCmd = &cobra.Command{
 	Use:   "cli",
@@ -55,26 +30,38 @@ func Execute() {
 }
 
 var backupContainerCmd = &cobra.Command{
-	Use:   "backup-container",
+	// ./docker-backup backup --container test-container --passphrase test --output backups
+	Use:   "backup",
 	Short: "Backup a container",
-	Long:  `Backup a container`,
-	Args:  cobra.ExactArgs(1),
+	Long:  `Backup a container to a borg repository`,
 	Run: func(cmd *cobra.Command, args []string) {
-		worker, err := NewWorker()
+		container, _ := cmd.Flags().GetString("container")
+		passphrase, _ := cmd.Flags().GetString("passphrase")
+		output, _ := cmd.Flags().GetString("output")
+
+		if container == "" || passphrase == "" || output == "" {
+			fmt.Printf("container, passphrase, and output are required\n")
+			return
+		}
+
+		worker, err := worker.NewWorker(container, output, passphrase)
 		if err != nil {
 			panic(err)
 		}
 
-		err = worker.BackupContainer(args[0])
+		defer worker.Stop()
+
+		err = worker.Backup()
 		if err != nil {
 			panic(err)
 		}
-	}
+	},
 }
 
 func init() {
-	_ = getDbClient()
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	rootCmd.AddCommand(projectsCmd)
-	backupContainerCmd.Root()
+	rootCmd.AddCommand(backupContainerCmd)
+	backupContainerCmd.Flags().StringP("container", "c", "", "Container to backup")
+	backupContainerCmd.Flags().StringP("passphrase", "p", "", "Passphrase to use for encryption")
+	backupContainerCmd.Flags().StringP("output", "o", "", "Output volume to use for backup")
 }

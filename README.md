@@ -2,9 +2,12 @@
 
 Docker Backup is a command-line tool for backing up Docker container volumes using BorgBackup. It simplifies the backup process, making it easy to manage and automate data backups for Docker containers.
 
-## Features (so far)
+## Features 
 - backup all volumes of a specific docker container
-  using borgbackup to a volume
+  using borgbackup to a volume (target container gets stopped during and restarted after backup)
+```bash
+docker-backup backup --container <container> --passphrase <passphrase> --output <output-volume>
+```
 
 ## Installation
 - Clone this repository
@@ -12,4 +15,11 @@ Docker Backup is a command-line tool for backing up Docker container volumes usi
   ```bash
   docker build -t worker .
   ```
-- (currently using `main.go`as entrypoint, cli will follow soon)
+- Build the go binary
+  ```bash
+  go build -o docker-backup cmd/docker-backup/main.go
+  ```
+
+## Requirements
+- Docker
+- GoLang

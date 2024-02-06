@@ -5,15 +5,29 @@ import (
 	"fmt"
 )
 
-func main() {
-	worker, err := worker.NewWorker("test-service", "backups")
+const (
+	targetContainer = "test-service"
+	passphrase      = "test2"
+	outputVolume    = "test-output"
+)
+
+func backupContainer() {
+	worker, err := worker.NewWorker(targetContainer, outputVolume, passphrase)
 	if err != nil {
-		fmt.Printf("Could not create worker: %s\n", err.Error())
+		fmt.Printf("error creating worker: %s\n", err)
 		return
 	}
 
+	defer worker.Stop()
+
 	err = worker.Backup()
 	if err != nil {
-		fmt.Printf("Could not backup: %s\n", err.Error())
+		fmt.Printf("error backing up: %s\n", err)
+		return
 	}
+}
+
+func main() {
+	backupContainer()
+	//cli.Execute()
 }
