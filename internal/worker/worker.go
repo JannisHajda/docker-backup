@@ -59,36 +59,9 @@ func (w *Worker) BackupContainer(containerIdentifier string) error {
 		return err
 	}
 
-	//	dbContainer, err := w.db.GetOrAddContainer(dockerContainer.GetID(), dockerContainer.GetName())
-	//	if err != nil {
-	//		return err
-	//	}
-
-	dockerVolumes := dockerContainer.GetVolumes()
-	var errs []error
-	for _, dockerVolume := range dockerVolumes {
-		dockerVolume.SetMountPoint("/input/" + dockerVolume.GetName())
-
-		//dbVolume, err := w.db.GetOrAddVolume(dockerVolume.GetName())
-		//if err != nil {
-		//errs = append(errs, err)
-		//continue
-		//}
-
-		//err = dbContainer.AddVolume(dbVolume)
-		//if err != nil {
-		//errs = append(errs, err)
-		//continue
-		//}
-	}
-
-	dockerVolumes = append(dockerVolumes, w.output)
-
-	if len(errs) > 0 {
-		return errs[0]
-	}
-
 	// pre-backup
+
+	dockerVolumes := w.getSourceVolumes(dockerContainer)
 
 	err = dockerContainer.Stop()
 	if err != nil {
@@ -105,14 +78,7 @@ func (w *Worker) BackupContainer(containerIdentifier string) error {
 		return err
 	}
 
-	errs = []error{}
-	for _, dockerVolume := range dockerVolumes {
-		err = w.backupVolume(bc, dockerVolume)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
+	errs := w.backupVolumes(bc, dockerVolumes)
 	if len(errs) > 0 {
 		panic(errs[0])
 	}
@@ -122,6 +88,18 @@ func (w *Worker) BackupContainer(containerIdentifier string) error {
 	return nil
 }
 
+func (w *Worker) backupVolumes(bc interfaces.BorgClient, v []interfaces.DockerVolume) []error {
+	var errs []error
+	for _, volume := range v {
+		err := w.backupVolume(bc, volume)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errs
+}
+
 func (w *Worker) backupVolume(bc interfaces.BorgClient, v interfaces.DockerVolume) error {
 	repo, err := bc.GetOrCreateRepository(v.GetName(), "test")
 	if err != nil {
@@ -129,6 +107,15 @@ func (w *Worker) backupVolume(bc interfaces.BorgClient, v interfaces.DockerVolum
 	}
 
 	return repo.Backup()
+}
+
+func (w *Worker) getSourceVolumes(c interfaces.DockerContainer) []interfaces.DockerVolume {
+	volumes := c.GetVolumes()
+	for _, volume := range volumes {
+		volume.SetMountPoint("/input/" + volume.GetName())
+	}
+
+	return volumes
 }
 
 func (w *Worker) createAndStartWorkerContainer(volumes []interfaces.DockerVolume, binds []interfaces.DockerBind) (interfaces.DockerContainer, error) {
