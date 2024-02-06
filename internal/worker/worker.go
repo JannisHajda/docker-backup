@@ -6,14 +6,25 @@ import (
 	"docker-backup/internal/db"
 	"docker-backup/internal/db/driver"
 	"docker-backup/internal/dockerclient"
+	"fmt"
+	"sync"
 )
 
 type Worker struct {
-	db        interfaces.DatabaseClient
-	dc        interfaces.DockerClient
-	container interfaces.DockerContainer
-	output    interfaces.DockerVolume
+	db              interfaces.DatabaseClient
+	dc              interfaces.DockerClient
+	bc              interfaces.BorgClient
+	workerContainer interfaces.DockerContainer
+	sourceContainer interfaces.DockerContainer
+	sourceVolumes   []interfaces.DockerVolume
+	outputVolume    interfaces.DockerVolume
 }
+
+const (
+	passphrase = "test"
+	sourcePath = "/source"
+	outputPath = "/output"
+)
 
 func getDbClient() interfaces.DatabaseClient {
 	driver, err := driver.NewPostgresDriver("postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
@@ -38,47 +49,78 @@ func getDockerClient() interfaces.DockerClient {
 	return client
 }
 
-func NewWorker(output string) (interfaces.Worker, error) {
-	dockerClient := getDockerClient()
-	outputVolume, err := dockerClient.CreateVolume(output)
-	outputVolume.SetMountPoint("/output")
+func (w *Worker) mountSourceVolumes(volumes []interfaces.DockerVolume) {
+	for _, volume := range volumes {
+		volume.SetMountPoint(fmt.Sprintf("%s/%s", sourcePath, volume.GetName()))
+		w.sourceVolumes = append(w.sourceVolumes, volume)
+	}
+}
 
+func (w *Worker) mountOutputVolume(volume interfaces.DockerVolume) {
+	volume.SetMountPoint(outputPath)
+	w.outputVolume = volume
+}
+
+func NewWorker(containerId string, outputVolumeName string) (interfaces.Worker, error) {
+	dc := getDockerClient()
+
+	source, err := dc.GetContainer(containerId)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Worker{
-		dc:     dockerClient,
-		output: outputVolume,
-	}, nil
+	output, err := dc.CreateVolume(outputVolumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	w := &Worker{
+		dc:              dc,
+		sourceContainer: source,
+		outputVolume:    output,
+	}
+
+	sourceVolumes := w.getSourceVolumes(source)
+	w.mountSourceVolumes(sourceVolumes)
+	w.mountOutputVolume(output)
+
+	w.workerContainer, err = w.dc.CreateContainer("worker", w.sourceVolumes, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return w, nil
 }
 
-func (w *Worker) BackupContainer(containerIdentifier string) error {
-	dockerContainer, err := w.dc.GetContainer(containerIdentifier)
-	if err != nil {
-		return err
+func (w *Worker) Backup() error {
+	if w.workerContainer == nil {
+		return fmt.Errorf("worker container not created")
 	}
 
 	// pre-backup
 
-	dockerVolumes := w.getSourceVolumes(dockerContainer)
-
-	err = dockerContainer.Stop()
+	err := w.sourceContainer.Stop()
 	if err != nil {
 		return err
 	}
 
-	defer dockerContainer.Start()
+	defer w.sourceContainer.Start()
 
-	workerContainer, err := w.createAndStartWorkerContainer(dockerVolumes, []interfaces.DockerBind{})
-	defer workerContainer.StopAndRemove()
-
-	bc, err := borgclient.NewBorgClient(workerContainer, "/input", "/output")
+	err = w.workerContainer.Start()
 	if err != nil {
 		return err
 	}
 
-	errs := w.backupVolumes(bc, dockerVolumes)
+	bc, err := borgclient.NewBorgClient(w.workerContainer, sourcePath, outputPath)
+	if err != nil {
+		return err
+	}
+
+	w.bc = bc
+
+	defer w.workerContainer.StopAndRemove()
+
+	errs := w.backupVolumes(w.sourceVolumes)
 	if len(errs) > 0 {
 		panic(errs[0])
 	}
@@ -88,10 +130,32 @@ func (w *Worker) BackupContainer(containerIdentifier string) error {
 	return nil
 }
 
-func (w *Worker) backupVolumes(bc interfaces.BorgClient, v []interfaces.DockerVolume) []error {
+func (w *Worker) backupVolumes(volumes []interfaces.DockerVolume) []error {
 	var errs []error
-	for _, volume := range v {
-		err := w.backupVolume(bc, volume)
+	var errsChan = make(chan error, len(volumes))
+	var wg sync.WaitGroup
+
+	for _, v := range volumes {
+		wg.Add(1)
+
+		go func(v interfaces.DockerVolume) {
+			defer wg.Done()
+
+			err := w.backupVolume(v)
+			if err != nil {
+				errsChan <- err
+			}
+		}(v)
+	}
+
+	// close errsChan when all volumes are backed u volumes are backed upp
+	go func() {
+		wg.Wait()
+		close(errsChan)
+	}()
+
+	// collect errors
+	for err := range errsChan {
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -100,8 +164,8 @@ func (w *Worker) backupVolumes(bc interfaces.BorgClient, v []interfaces.DockerVo
 	return errs
 }
 
-func (w *Worker) backupVolume(bc interfaces.BorgClient, v interfaces.DockerVolume) error {
-	repo, err := bc.GetOrCreateRepository(v.GetName(), "test")
+func (w *Worker) backupVolume(v interfaces.DockerVolume) error {
+	repo, err := w.bc.GetOrCreateRepository(v.GetName(), passphrase)
 	if err != nil {
 		return err
 	}
@@ -112,26 +176,9 @@ func (w *Worker) backupVolume(bc interfaces.BorgClient, v interfaces.DockerVolum
 func (w *Worker) getSourceVolumes(c interfaces.DockerContainer) []interfaces.DockerVolume {
 	volumes := c.GetVolumes()
 	for _, volume := range volumes {
-		volume.SetMountPoint("/input/" + volume.GetName())
+		path := fmt.Sprintf("%s/%s", sourcePath, volume.GetName())
+		volume.SetMountPoint(path)
 	}
 
 	return volumes
-}
-
-func (w *Worker) createAndStartWorkerContainer(volumes []interfaces.DockerVolume, binds []interfaces.DockerBind) (interfaces.DockerContainer, error) {
-	c, err := w.dc.CreateContainer("worker", volumes, binds)
-	if err != nil {
-		return nil, err
-	}
-
-	err = c.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	return c, nil
-}
-
-func (w *Worker) BackupProject(projectName string) error {
-	return nil
 }

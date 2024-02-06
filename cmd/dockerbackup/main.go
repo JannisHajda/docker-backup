@@ -6,15 +6,14 @@ import (
 )
 
 func main() {
-	worker, err := worker.NewWorker("docker-backup-output")
+	worker, err := worker.NewWorker("test-service", "backups")
 	if err != nil {
 		fmt.Printf("Could not create worker: %s\n", err.Error())
 		return
 	}
 
-	err = worker.BackupContainer("test-service")
+	err = worker.Backup()
 	if err != nil {
-		fmt.Printf("Could not backup container: %s\n", err.Error())
-		return
+		fmt.Printf("Could not backup: %s\n", err.Error())
 	}
 }
