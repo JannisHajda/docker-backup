@@ -88,33 +88,16 @@ func (w *Worker) BackupContainer(containerIdentifier string) error {
 		return errs[0]
 	}
 
-	_, err = dockerContainer.Exec("touch /test-volume1/test-file && touch /test-volume2/test-file")
+	// pre-backup
+
+	err = dockerContainer.Stop()
 	if err != nil {
 		return err
 	}
-
-	_, err = dockerContainer.Exec("echo 'test' > /test-volume1/test-file")
-	if err != nil {
-		return err
-	}
-
-	//err = dockerContainer.Stop()
-	//if err != nil {
-	//	return err
-	//}
 
 	defer dockerContainer.Start()
 
-	workerContainer, err := w.dc.CreateContainer("worker", dockerVolumes, nil)
-	if err != nil {
-		return err
-	}
-
-	err = workerContainer.Start()
-	if err != nil {
-		return err
-	}
-
+	workerContainer, err := w.createAndStartWorkerContainer(dockerVolumes, []interfaces.DockerBind{})
 	defer workerContainer.StopAndRemove()
 
 	bc, err := borgclient.NewBorgClient(workerContainer, "/input", "/output")
@@ -124,20 +107,42 @@ func (w *Worker) BackupContainer(containerIdentifier string) error {
 
 	errs = []error{}
 	for _, dockerVolume := range dockerVolumes {
-		repo, err := bc.GetOrCreateRepository(dockerVolume.GetName(), "test")
+		err = w.backupVolume(bc, dockerVolume)
 		if err != nil {
 			errs = append(errs, err)
-			continue
-		}
-
-		err = repo.Backup()
-		if err != nil {
-			errs = append(errs, err)
-			continue
 		}
 	}
 
+	if len(errs) > 0 {
+		panic(errs[0])
+	}
+
+	// post-backup
+
 	return nil
+}
+
+func (w *Worker) backupVolume(bc interfaces.BorgClient, v interfaces.DockerVolume) error {
+	repo, err := bc.GetOrCreateRepository(v.GetName(), "test")
+	if err != nil {
+		return err
+	}
+
+	return repo.Backup()
+}
+
+func (w *Worker) createAndStartWorkerContainer(volumes []interfaces.DockerVolume, binds []interfaces.DockerBind) (interfaces.DockerContainer, error) {
+	c, err := w.dc.CreateContainer("worker", volumes, binds)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.Start()
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
 
 func (w *Worker) BackupProject(projectName string) error {
