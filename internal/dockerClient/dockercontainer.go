@@ -1,14 +1,15 @@
 package dockerclient
 
 import (
+	"bytes"
 	"context"
 	"docker-backup/interfaces"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/pkg/stdcopy"
 )
 
 type DockerContainer struct {
@@ -17,11 +18,12 @@ type DockerContainer struct {
 	name    string
 	envVars map[string]string
 	volumes []interfaces.DockerVolume
+	binds   []interfaces.DockerBind
 }
 
-func NewDockerContainer(c *DockerClient, id string, name string, volumes []interfaces.DockerVolume) interfaces.DockerContainer {
+func NewDockerContainer(c *DockerClient, id string, name string, volumes []interfaces.DockerVolume, binds []interfaces.DockerBind) interfaces.DockerContainer {
 	return &DockerContainer{DockerClient: c, id: id, name: name, envVars: map[string]string{},
-		volumes: volumes}
+		volumes: volumes, binds: binds}
 }
 
 func (d *DockerContainer) GetID() string {
@@ -34,6 +36,10 @@ func (d *DockerContainer) GetName() string {
 
 func (d *DockerContainer) GetVolumes() []interfaces.DockerVolume {
 	return d.volumes
+}
+
+func (d *DockerContainer) GetBinds() []interfaces.DockerBind {
+	return d.binds
 }
 
 func (d *DockerContainer) SetEnv(key string, value string) {
@@ -80,46 +86,60 @@ func (d *DockerContainer) envMapToSlice() []string {
 
 func (d *DockerContainer) Exec(cmd string) (string, error) {
 	execCreateResp, err := d.client.ContainerExecCreate(context.Background(), d.id, types.ExecConfig{
-		Cmd:          strings.Fields(cmd),
+		Cmd:          []string{"/bin/sh", "-c", cmd},
 		AttachStdout: true,
 		AttachStderr: true,
-		Tty:          false, // Set to true if you want a TTY-like behavior
-		Env:          d.envMapToSlice(),
+		Tty:          false,
+		Env:          d.envMapToSlice(), // You may customize the environment if needed
 	})
+
 	if err != nil {
 		return "", err
 	}
 
-	execID := execCreateResp.ID
-
-	execAttachResp, err := d.client.ContainerExecAttach(context.Background(), execID, types.ExecStartCheck{})
-	if err != nil {
-		return "", err
-	}
-	defer execAttachResp.Close()
-
-	// Read the output from the attached response
-	var output strings.Builder
-	_, err = io.Copy(&output, execAttachResp.Reader)
+	res, err := d.client.ContainerExecAttach(context.Background(), execCreateResp.ID, types.ExecStartCheck{})
 	if err != nil {
 		return "", err
 	}
 
-	// Start the execution
-	err = d.client.ContainerExecStart(context.Background(), execID, types.ExecStartCheck{})
+	defer res.Close()
+
+	var outBuf, errBuf bytes.Buffer
+	outputDone := make(chan error)
+
+	go func() {
+		_, err := stdcopy.StdCopy(&outBuf, &errBuf, res.Reader)
+		outputDone <- err
+	}()
+
+	select {
+	case err := <-outputDone:
+		if err != nil {
+			return "", err
+		}
+
+	case <-context.Background().Done():
+		return "", context.Background().Err()
+	}
+
+	stdout, err := io.ReadAll(&outBuf)
 	if err != nil {
 		return "", err
 	}
 
-	// Wait for the command to finish
-	execInspectResp, err := d.client.ContainerExecInspect(context.Background(), execID)
+	stderr, err := io.ReadAll(&errBuf)
 	if err != nil {
 		return "", err
 	}
 
-	if execInspectResp.ExitCode != 0 {
-		return "", fmt.Errorf("Command failed with exit code %d: %s", execInspectResp.ExitCode, output.String())
+	inspect, err := d.client.ContainerExecInspect(context.Background(), execCreateResp.ID)
+	if err != nil {
+		return "", err
 	}
 
-	return output.String(), nil
+	if inspect.ExitCode != 0 {
+		return "", fmt.Errorf("Command failed with exit code %d: %s", inspect.ExitCode, stderr)
+	}
+
+	return string(stdout), nil
 }

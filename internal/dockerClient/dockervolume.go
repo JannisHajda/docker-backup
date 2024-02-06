@@ -8,8 +8,8 @@ type DockerVolume struct {
 	RW         bool
 }
 
-func NewDockerVolume(name string, rw bool) interfaces.DockerVolume {
-	return &DockerVolume{Name: name, RW: rw}
+func NewDockerVolume(name string, mountPoint string, rw bool) interfaces.DockerVolume {
+	return &DockerVolume{Name: name, MountPoint: mountPoint, RW: rw}
 }
 
 func (d *DockerVolume) GetName() string {

@@ -3,6 +3,8 @@ package dockerclient
 import (
 	"context"
 	"docker-backup/interfaces"
+	"fmt"
+	"github.com/docker/docker/api/types/volume"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
@@ -43,16 +45,19 @@ func (d *DockerClient) GetContainer(id string) (interfaces.DockerContainer, erro
 	}
 
 	var volumes []interfaces.DockerVolume
-	for _, v := range c.Mounts {
-		if v.Type == "volume" {
-			volumes = append(volumes, NewDockerVolume(v.Name, v.RW))
+	var binds []interfaces.DockerBind
+	for _, m := range c.Mounts {
+		if m.Type == "volume" {
+			volumes = append(volumes, NewDockerVolume(m.Name, m.Source, m.RW))
+		} else if m.Type == "bind" {
+			binds = append(binds, NewDockerBind(m.Source, m.Destination, m.RW))
 		}
 	}
 
-	return NewDockerContainer(d, c.ID, c.Name, volumes), nil
+	return NewDockerContainer(d, c.ID, c.Name, volumes, binds), nil
 }
 
-func (d *DockerClient) CreateContainer(image string, volumes []interfaces.DockerVolume) (interfaces.DockerContainer, error) {
+func (d *DockerClient) CreateContainer(image string, volumes []interfaces.DockerVolume, binds []interfaces.DockerBind) (interfaces.DockerContainer, error) {
 	hostConfig := &container.HostConfig{
 		Mounts: []mount.Mount{},
 	}
@@ -62,6 +67,14 @@ func (d *DockerClient) CreateContainer(image string, volumes []interfaces.Docker
 			Type:   "volume",
 			Source: v.GetName(),
 			Target: v.GetMountPoint(),
+		})
+	}
+
+	for _, b := range binds {
+		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+			Type:   "bind",
+			Source: b.GetSource(),
+			Target: b.GetTarget(),
 		})
 	}
 
@@ -78,5 +91,28 @@ func (d *DockerClient) CreateContainer(image string, volumes []interfaces.Docker
 		return nil, err
 	}
 
-	return NewDockerContainer(d, container.GetID(), container.GetName(), volumes), nil
+	return NewDockerContainer(d, container.GetID(), container.GetName(), volumes, binds), nil
+}
+
+func (d *DockerClient) GetVolume(name string) (interfaces.DockerVolume, error) {
+	v, err := d.client.VolumeInspect(context.Background(), name)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewDockerVolume(v.Name, v.Mountpoint, true), nil
+}
+
+func (d *DockerClient) CreateVolume(name string) (interfaces.DockerVolume, error) {
+	v, err := d.client.VolumeCreate(context.Background(), volume.CreateOptions{
+		Name: name,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("Created volume %s\n", v.Name)
+
+	return NewDockerVolume(name, v.Mountpoint, true), nil
 }

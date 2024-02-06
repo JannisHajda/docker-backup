@@ -93,7 +93,7 @@ func (b *BorgClient) GetRepository(name string, passphrase string) (interfaces.B
 		return nil, err
 	}
 
-	return NewBorgRepository(b, path, passphrase)
+	return NewBorgRepository(b, name, passphrase)
 }
 
 func (b *BorgClient) CreateRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
@@ -106,7 +106,7 @@ func (b *BorgClient) CreateRepository(name string, passphrase string) (interface
 		return nil, err
 	}
 
-	return NewBorgRepository(b, path, passphrase)
+	return NewBorgRepository(b, name, passphrase)
 }
 
 func (b *BorgClient) GetOrCreateRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
