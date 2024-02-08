@@ -8,8 +8,6 @@ import (
 )
 
 type BorgClient struct {
-	inputDir  string
-	outputDir string
 	container interfaces.DockerContainer
 }
 
@@ -63,6 +61,29 @@ func (b *BorgClient) isRepositoryAlreadyExistsError(output string) bool {
 	return false
 }
 
+// Remote-backup permission denied error
+func (b *BorgClient) isPermissionDeniedError(output string) bool {
+	re := regexp.MustCompile(`Permission denied`)
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (b *BorgClient) wrongPassphraseError(output string) bool {
+	re := regexp.MustCompile("passphrase supplied in BORG_PASSPHRASE, by BORG_PASSCOMAND or via BORG_PASSPHRASE_FD is incorrect")
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
+}
+
 func (b *BorgClient) ensureBorgIsInstalled() error {
 	_, err := b.container.Exec("borg --version")
 	if err != nil {
@@ -72,8 +93,30 @@ func (b *BorgClient) ensureBorgIsInstalled() error {
 	return nil
 }
 
-func NewBorgClient(c interfaces.DockerContainer, inputDir string, outputDir string) (interfaces.BorgClient, error) {
-	bc := &BorgClient{container: c, inputDir: inputDir, outputDir: outputDir}
+func (b *BorgClient) isRemoteHostNotFoundError(output string) bool {
+	re := regexp.MustCompile("Could not resolve hostname")
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (b *BorgClient) isHostKeyVerificationFailedError(output string) bool {
+	re := regexp.MustCompile("Host key verification failed")
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func NewBorgClient(c interfaces.DockerContainer) (interfaces.BorgClient, error) {
+	bc := &BorgClient{container: c}
 	err := bc.ensureBorgIsInstalled()
 
 	if err != nil {
@@ -83,8 +126,7 @@ func NewBorgClient(c interfaces.DockerContainer, inputDir string, outputDir stri
 	return bc, nil
 }
 
-func (b *BorgClient) GetRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
-	path := b.outputDir + "/" + name
+func (b *BorgClient) GetRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
 	b.container.SetEnv("BORG_PASSPHRASE", passphrase)
 
 	_, err := b.container.Exec("borg list " + path)
@@ -93,11 +135,14 @@ func (b *BorgClient) GetRepository(name string, passphrase string) (interfaces.B
 		return nil, err
 	}
 
-	return NewBorgRepository(b, name, passphrase)
+	return NewBorgRepository(b, path, passphrase)
 }
 
-func (b *BorgClient) CreateRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
-	path := b.outputDir + "/" + name
+func (b *BorgClient) GetContainer() interfaces.DockerContainer {
+	return b.container
+}
+
+func (b *BorgClient) CreateRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
 	b.container.SetEnv("BORG_PASSPHRASE", passphrase)
 
 	_, err := b.container.Exec("borg init " + path + " -e repokey-blake2 --make-parent-dirs")
@@ -106,14 +151,14 @@ func (b *BorgClient) CreateRepository(name string, passphrase string) (interface
 		return nil, err
 	}
 
-	return NewBorgRepository(b, name, passphrase)
+	return NewBorgRepository(b, path, passphrase)
 }
 
-func (b *BorgClient) GetOrCreateRepository(name string, passphrase string) (interfaces.BorgRepository, error) {
-	repo, err := b.GetRepository(name, passphrase)
+func (b *BorgClient) GetOrCreateRepository(path string, passphrase string) (interfaces.BorgRepository, error) {
+	repo, err := b.GetRepository(path, passphrase)
 	if err != nil {
 		if _, ok := err.(*errors.RepositoryDoesNotExistError); ok {
-			repo, err = b.CreateRepository(name, passphrase)
+			repo, err = b.CreateRepository(path, passphrase)
 			if err != nil {
 				return nil, err
 			}
@@ -123,12 +168,4 @@ func (b *BorgClient) GetOrCreateRepository(name string, passphrase string) (inte
 	}
 
 	return repo, nil
-}
-
-func (b *BorgClient) SetInputDir(inputDir string) {
-	b.inputDir = inputDir
-}
-
-func (b *BorgClient) SetOutputDir(outputDir string) {
-	b.outputDir = outputDir
 }

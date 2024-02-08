@@ -1,6 +1,6 @@
 FROM ubuntu
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
-    borgbackup
+    borgbackup openssh-client iputils-ping
 
 ENV LANG en_US.UTF-8
 

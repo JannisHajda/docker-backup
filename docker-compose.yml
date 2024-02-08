@@ -9,20 +9,17 @@ services:
     volumes:
       - test-volume1:/test-volume1
       - test-volume2:/test-volume2
-      - ./test-bind1:/test-bind1
-      - ./test-bind2:/test-bind2
-  db:
-    image: postgres
-    container_name: docker-backup-db
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
-    ports:
-        - 5432:5432
+  remote-backup:
+    image: worker
+    command: tail -f /dev/null
+    container_name: remote-backup
+  worker:
+    image: worker
+    command: tail -f /dev/null
+    container_name: local-worker
     volumes:
-      - docker-backup-db:/var/lib/postgresql/data
-
+      - test-volume1:/input/test-volume1
+      - test-volume2:/input/test-volume2
 volumes:
     test-volume1:
     test-volume2:
