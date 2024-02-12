@@ -1,6 +1,7 @@
 package borgclient
 
 import (
+	"docker-backup/errors"
 	"docker-backup/interfaces"
 	"time"
 )
@@ -25,7 +26,7 @@ func (b *BorgRepository) GetArchives() (string, error) {
 
 	output, err := b.container.Exec("borg list " + b.path)
 	if err != nil {
-		err = b.handleError(err)
+		err = errors.HandleBorgClientError(err)
 		return "", err
 	}
 

@@ -12,7 +12,7 @@ type PostgresDriver struct {
 	conn string
 }
 
-func (d *PostgresDriver) Connect() (*sql.DB, error) {
+func (d *PostgresDriver) connect() (*sql.DB, error) {
 	conn, err := sql.Open("postgres", d.conn)
 	if err != nil {
 		return nil, err
@@ -23,10 +23,11 @@ func (d *PostgresDriver) Connect() (*sql.DB, error) {
 
 func NewPostgresDriver(connection string) (interfaces.DatabaseDriver, error) {
 	driver := &PostgresDriver{conn: connection}
-	_, err := driver.Connect()
+	db, err := driver.connect()
 	if err != nil {
 		return nil, err
 	}
+	defer db.Close()
 
 	return driver, nil
 }
@@ -49,7 +50,7 @@ func (d *PostgresDriver) handleError(err error) error {
 }
 
 func (d *PostgresDriver) Exec(query string, args ...interface{}) (sql.Result, error) {
-	conn, err := d.Connect()
+	conn, err := d.connect()
 	defer conn.Close()
 
 	if err != nil {
@@ -65,7 +66,7 @@ func (d *PostgresDriver) Exec(query string, args ...interface{}) (sql.Result, er
 }
 
 func (d *PostgresDriver) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	conn, err := d.Connect()
+	conn, err := d.connect()
 	defer conn.Close()
 
 	if err != nil {

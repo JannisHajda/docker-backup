@@ -13,14 +13,18 @@ services:
     image: worker
     command: tail -f /dev/null
     container_name: remote-backup
+    volumes:
+      - remote-backup-data:/home/borg/backup
   worker:
     image: worker
     command: tail -f /dev/null
-    container_name: local-worker
+    container_name: worker
     volumes:
       - test-volume1:/input/test-volume1
       - test-volume2:/input/test-volume2
+      - ./.ssh:/root/.ssh
 volumes:
     test-volume1:
     test-volume2:
     docker-backup-db:
+    remote-backup-data:
