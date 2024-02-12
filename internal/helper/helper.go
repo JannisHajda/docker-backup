@@ -1,8 +1,10 @@
 package helper
 
 import (
-	"database/sql"
+	"docker-backup/interfaces"
+	"docker-backup/internal/db"
 	"docker-backup/internal/db/driver"
+	"docker-backup/internal/dockerclient"
 )
 
 func MapToSlice(m map[string]string) []string {
@@ -13,16 +15,25 @@ func MapToSlice(m map[string]string) []string {
 	return s
 }
 
-func GetDBConnection() (*sql.DB, error) {
-	driver, err := driver.NewPostgresDriver("postgres://postgres:postgres@localhost:5432/docker_backup?sslmode=disable")
+func GetDBClient() (interfaces.DatabaseClient, error) {
+	driver, err := driver.NewPostgresDriver("postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	if err != nil {
+		panic(err)
+	}
+
+	client, err := db.NewDatabaseClient(driver)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := driver.Connect()
+	return client, nil
+}
+
+func GetDockerClient() (interfaces.DockerClient, error) {
+	client, err := dockerclient.NewDockerClient()
 	if err != nil {
 		return nil, err
 	}
 
-	return conn, nil
+	return client, nil
 }

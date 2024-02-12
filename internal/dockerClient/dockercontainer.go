@@ -86,7 +86,7 @@ func (d *DockerContainer) envMapToSlice() []string {
 
 func (d *DockerContainer) Exec(cmd string) (string, error) {
 	execCreateResp, err := d.client.ContainerExecCreate(context.Background(), d.id, types.ExecConfig{
-		Cmd:          []string{"/bin/sh", "-c", cmd},
+		Cmd:          []string{"/bin/bash", "-c", cmd},
 		AttachStdout: true,
 		AttachStderr: true,
 		Tty:          false,
