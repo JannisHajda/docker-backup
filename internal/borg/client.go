@@ -1,4 +1,4 @@
-package borgclient
+package borg
 
 import (
 	"docker-backup/errors"

@@ -4,7 +4,7 @@ import (
 	"docker-backup/interfaces"
 	"docker-backup/internal/db"
 	"docker-backup/internal/db/driver"
-	"docker-backup/internal/dockerclient"
+	"docker-backup/internal/docker"
 )
 
 func MapToSlice(m map[string]string) []string {
@@ -30,7 +30,7 @@ func GetDBClient() (interfaces.DatabaseClient, error) {
 }
 
 func GetDockerClient() (interfaces.DockerClient, error) {
-	client, err := dockerclient.NewDockerClient()
+	client, err := docker.NewDockerClient()
 	if err != nil {
 		return nil, err
 	}

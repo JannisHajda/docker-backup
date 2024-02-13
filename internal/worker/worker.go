@@ -2,10 +2,10 @@ package worker
 
 import (
 	"docker-backup/interfaces"
-	"docker-backup/internal/borgclient"
-	"docker-backup/internal/dockerclient"
+	"docker-backup/internal/borg"
+	"docker-backup/internal/docker"
 	"docker-backup/internal/helper"
-	"docker-backup/internal/sshclient"
+	"docker-backup/internal/ssh"
 	"fmt"
 	"strings"
 	"sync"
@@ -128,7 +128,7 @@ func (w *Worker) mountLocalBackups(backups []interfaces.LocalBackup) []error {
 
 func (w *Worker) mountKeyfile(keyfile string) interfaces.DockerBind {
 	keyfileName := strings.Split(keyfile, "/")[len(strings.Split(keyfile, "/"))-1]
-	return dockerclient.NewDockerBind(keyfile, fmt.Sprintf("%s/%s", keyfilesPath, keyfileName), false)
+	return docker.NewDockerBind(keyfile, fmt.Sprintf("%s/%s", keyfilesPath, keyfileName), false)
 }
 
 func (w *Worker) mountRemoteBackup(backup interfaces.RemoteBackup) error {
@@ -237,7 +237,7 @@ func (w *Worker) initSSHClient() []error {
 		hosts = append(hosts, backupLocation.GetHost())
 	}
 
-	ssh, errs := sshclient.NewSSHClient(w.workerContainer, w.keyfiles, hosts)
+	ssh, errs := ssh.NewSSHClient(w.workerContainer, w.keyfiles, hosts)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -270,7 +270,7 @@ func (w *Worker) Backup() error {
 
 	defer w.workerContainer.StopAndRemove()
 
-	bc, err := borgclient.NewBorgClient(w.workerContainer)
+	bc, err := borg.NewBorgClient(w.workerContainer)
 	if err != nil {
 		return err
 	}
