@@ -44,14 +44,14 @@ var backupContainerCmd = &cobra.Command{
 			return
 		}
 
-		worker, err := worker.NewWorker(container, output, passphrase)
+		w, err := worker.NewWorker(container, output, passphrase)
 		if err != nil {
 			panic(err)
 		}
 
-		defer worker.Stop()
+		defer w.Stop()
 
-		err = worker.Backup()
+		err = w.Backup()
 		if err != nil {
 			panic(err)
 		}

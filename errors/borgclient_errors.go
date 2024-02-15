@@ -26,6 +26,16 @@ func HandleBorgClientError(e error) error {
 	return fmt.Errorf("unknown error")
 }
 
+type BorgUnknownEncryptionTypeError struct {
+	*InternalError
+}
+
+func NewBorgUnknownEncryptionTypeError(encryptionType string) *BorgUnknownEncryptionTypeError {
+	return &BorgUnknownEncryptionTypeError{
+		InternalError: NewInternalError(fmt.Sprintf("Unknown encryption type: %s", encryptionType), nil),
+	}
+}
+
 type BorgNotInstalledError struct {
 	*InternalError
 }

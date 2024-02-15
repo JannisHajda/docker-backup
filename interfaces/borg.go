@@ -1,13 +1,23 @@
 package interfaces
 
+type CreateBorgRepoConfig struct {
+	Path           string
+	EncryptionType string
+	Passphrase     string
+	Key            string
+	AppendOnly     bool
+	StorageQuota   string
+	MakeParentDirs bool
+}
+
 type BorgClient interface {
-	GetRepository(path string, passphrase string) (BorgRepository, error)
-	CreateRepository(path string, passphrase string) (BorgRepository, error)
-	GetOrCreateRepository(path string, passphrase string) (BorgRepository, error)
+	GetRepo(path string, passphrase string) (BorgRepo, error)
+	CreateRepo(config CreateBorgRepoConfig) (BorgRepo, error)
+	GetOrCreateRepo(config CreateBorgRepoConfig) (BorgRepo, error)
 	GetContainer() DockerContainer
 }
 
-type BorgRepository interface {
+type BorgRepo interface {
 	Backup(input string) error
 	GetPath() string
 }

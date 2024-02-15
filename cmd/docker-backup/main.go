@@ -16,15 +16,15 @@ func backupContainer() {
 	localbackup2 := worker.NewLocalBackup("local-backup2")
 	remotebackup := worker.NewRemoteBackup("borg", "remote-backup", "/home/borg/backups", "/Users/jannis/Git/docker-backup/.ssh/id_ed25519")
 
-	worker, err := worker.NewWorker(targetContainer, passphrase, []interfaces.LocalBackup{localbackup1, localbackup2}, []interfaces.RemoteBackup{remotebackup})
+	w, err := worker.NewWorker(targetContainer, passphrase, []interfaces.LocalBackup{localbackup1, localbackup2}, []interfaces.RemoteBackup{remotebackup})
 	if err != nil {
 		fmt.Printf("error creating worker: %s\n", err)
 		return
 	}
 
-	defer worker.Stop()
+	defer w.Stop()
 
-	err = worker.Backup()
+	err = w.Backup()
 	if err != nil {
 		fmt.Printf("error backing up: %s\n", err)
 		return

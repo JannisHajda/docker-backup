@@ -324,7 +324,13 @@ func (w *Worker) backupVolumes(volumes []interfaces.DockerVolume, output string)
 
 func (w *Worker) backupVolume(volume interfaces.DockerVolume, repoPath string) error {
 	// create repository
-	repo, err := w.bc.GetOrCreateRepository(repoPath, w.passphrase)
+	repo, err := w.bc.GetOrCreateRepo(interfaces.CreateBorgRepoConfig{
+		Path:           repoPath,
+		Passphrase:     w.passphrase,
+		EncryptionType: "none",
+		MakeParentDirs: true,
+	})
+
 	if err != nil {
 		return err
 	}

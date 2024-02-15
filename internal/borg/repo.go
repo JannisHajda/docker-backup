@@ -2,26 +2,21 @@ package borg
 
 import (
 	"docker-backup/errors"
-	"docker-backup/interfaces"
 	"time"
 )
 
-type BorgRepository struct {
+type BorgRepo struct {
 	*BorgClient
 	path       string
 	passphrase string
 	key        string
 }
 
-func NewBorgRepository(c *BorgClient, path string, passphrase string) (interfaces.BorgRepository, error) {
-	return &BorgRepository{BorgClient: c, path: path, passphrase: passphrase}, nil
-}
-
-func (b *BorgRepository) GetPath() string {
+func (b *BorgRepo) GetPath() string {
 	return b.path
 }
 
-func (b *BorgRepository) GetArchives() (string, error) {
+func (b *BorgRepo) GetArchives() (string, error) {
 	b.container.SetEnv("BORG_PASSPHRASE", b.passphrase)
 
 	output, err := b.container.Exec("borg list " + b.path)
@@ -33,7 +28,7 @@ func (b *BorgRepository) GetArchives() (string, error) {
 	return output, nil
 }
 
-func (r *BorgRepository) Backup(input string) error {
+func (r *BorgRepo) Backup(input string) error {
 	r.container.SetEnv("BORG_PASSPHRASE", r.passphrase)
 	now := time.Now().Format("2006-01-02T15:04:05")
 
