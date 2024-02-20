@@ -9,13 +9,15 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
-	DOCKER_IMAGE = "worker"
-	inputPath    = "/input"
-	outputPath   = "/output"
-	keyfilesPath = "/keyfiles"
+	DOCKER_IMAGE      = "worker"
+	inputVolumesPath  = "/input"
+	outputVolumesPath = "/output"
+	sshKeyfiles       = "/ssh_keyfiles"
+	borgKeyfiles      = "/borg_keyfiles"
 )
 
 type Worker struct {
@@ -28,8 +30,10 @@ type Worker struct {
 	sourceContainer interfaces.DockerContainer
 
 	inputVolumes  []interfaces.DockerVolume
+	repos         []interfaces.BorgRepo
 	outputVolumes []interfaces.DockerVolume
-	keyfiles      []interfaces.DockerBind
+	borgKeyfiles  []interfaces.DockerBind
+	sshKeyfiles   []interfaces.DockerBind
 	localBackups  []interfaces.LocalBackup
 	remoteBackups []interfaces.RemoteBackup
 
@@ -83,7 +87,7 @@ func (w *Worker) mountLocalBackup(backup interfaces.LocalBackup) error {
 		return err
 	}
 
-	volume.SetMountPoint(fmt.Sprintf("%s/%s", outputPath, backup.GetVolumeName()))
+	volume.SetMountPoint(fmt.Sprintf("%s/%s", outputVolumesPath, backup.GetVolumeName()))
 	backup.SetVolume(volume)
 	w.localBackups = append(w.localBackups, backup)
 	w.outputVolumes = append(w.outputVolumes, volume)
@@ -134,7 +138,7 @@ func (w *Worker) mountKeyfile(keyfile string) interfaces.DockerBind {
 func (w *Worker) mountRemoteBackup(backup interfaces.RemoteBackup) error {
 	// import ssh key
 	keyfile := w.mountKeyfile(backup.GetSshKey())
-	w.keyfiles = append(w.keyfiles, keyfile)
+	w.sshKeyfiles = append(w.sshKeyfiles, keyfile)
 	w.remoteBackups = append(w.remoteBackups, backup)
 
 	return nil
@@ -177,7 +181,7 @@ func (w *Worker) mountRemoteBackups(backups []interfaces.RemoteBackup) []error {
 }
 
 func (w *Worker) mountInputVolume(volume interfaces.DockerVolume) error {
-	path := fmt.Sprintf("%s/%s", inputPath, volume.GetName())
+	path := fmt.Sprintf("%s/%s", inputVolumesPath, volume.GetName())
 	volume.SetMountPoint(path)
 	w.inputVolumes = append(w.inputVolumes, volume)
 
@@ -237,7 +241,7 @@ func (w *Worker) initSSHClient() []error {
 		hosts = append(hosts, backupLocation.GetHost())
 	}
 
-	ssh, errs := ssh.NewSSHClient(w.workerContainer, w.keyfiles, hosts)
+	ssh, errs := ssh.NewSSHClient(w.workerContainer, w.sshKeyfiles, hosts)
 	if len(errs) > 0 {
 		return errs
 	}
@@ -278,7 +282,7 @@ func (w *Worker) Backup() error {
 	w.bc = bc
 
 	for _, backupLocation := range w.localBackups {
-		path := fmt.Sprintf("%s/%s/%s", outputPath, backupLocation.GetVolumeName(), w.sourceContainer.GetID())
+		path := fmt.Sprintf("%s/%s/%s", outputVolumesPath, backupLocation.GetVolumeName(), w.sourceContainer.GetID())
 		volumeErrs := w.backupVolumes(w.inputVolumes, path)
 
 		if len(volumeErrs) > 0 {
@@ -327,16 +331,20 @@ func (w *Worker) backupVolume(volume interfaces.DockerVolume, repoPath string) e
 	repo, err := w.bc.GetOrCreateRepo(interfaces.CreateBorgRepoConfig{
 		Path:           repoPath,
 		Passphrase:     w.passphrase,
-		EncryptionType: "none",
+		EncryptionType: "repokey-blake2",
 		MakeParentDirs: true,
 	})
-
 	if err != nil {
 		return err
 	}
 
-	// backup volume
-	err = repo.Backup(volume.GetMountPoint())
+	now := time.Now().Format("2006-01-02-15-04-05")
+
+	err = repo.CreateArchive(interfaces.CreateBorgArchiveConfig{
+		Sources:     []string{volume.GetMountPoint()},
+		Name:        now,
+		Compression: "zstd",
+	})
 	if err != nil {
 		return err
 	}

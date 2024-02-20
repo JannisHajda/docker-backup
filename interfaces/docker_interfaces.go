@@ -14,6 +14,7 @@ type DockerContainer interface {
 	GetEnv(key string) string
 	GetEnvs() map[string]string
 	SetEnv(key string, value string)
+	RemoveEnv(key string)
 	Start() error
 	Stop() error
 	Remove() error
@@ -30,7 +31,7 @@ type DockerVolume interface {
 }
 
 type DockerBind interface {
-	GetSource() string
-	GetTarget() string
+	GetHostPath() string
+	GetMountPoint() string
 	IsRW() bool
 }

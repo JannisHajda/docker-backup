@@ -3,15 +3,19 @@ package worker
 import "docker-backup/interfaces"
 
 type LocalBackup struct {
-	volumeName string
-	v          interfaces.DockerVolume
+	volumeName      string
+	v               interfaces.DockerVolume
+	borg_key        string
+	borg_passphrase string
 }
 
 type RemoteBackup struct {
-	user    string
-	host    string
-	path    string
-	ssh_key string
+	user            string
+	host            string
+	path            string
+	ssh_key         string
+	borg_key        string
+	borg_passphrase string
 }
 
 func NewLocalBackup(volumeName string) interfaces.LocalBackup {

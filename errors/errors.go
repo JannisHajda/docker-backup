@@ -2,7 +2,6 @@ package errors
 
 import (
 	"fmt"
-	"regexp"
 )
 
 type InternalError struct {
@@ -19,17 +18,4 @@ func NewInternalError(message string, cause error) *InternalError {
 		Message: message,
 		Cause:   cause,
 	}
-}
-
-// detect regex errors
-func IsErrOfKind(err error, kind string) bool {
-	message := err.Error()
-	re := regexp.MustCompile(kind)
-	matches := re.FindStringSubmatch(message)
-
-	if len(matches) > 0 {
-		return true
-	}
-
-	return false
 }

@@ -30,12 +30,12 @@ func NewDockerClient() (interfaces.DockerClient, error) {
 		return nil, err
 	}
 
-	client, err := client.NewClientWithOpts(client.FromEnv)
+	c, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DockerClient{client: *client}, nil
+	return &DockerClient{client: *c}, nil
 }
 
 func (d *DockerClient) GetContainer(id string) (interfaces.DockerContainer, error) {
@@ -48,9 +48,15 @@ func (d *DockerClient) GetContainer(id string) (interfaces.DockerContainer, erro
 	var binds []interfaces.DockerBind
 	for _, m := range c.Mounts {
 		if m.Type == "volume" {
-			volumes = append(volumes, NewDockerVolume(m.Name, m.Source, m.RW))
+			volumeName := m.Name
+			mountPoint := m.Destination
+
+			volumes = append(volumes, NewDockerVolume(volumeName, mountPoint, m.RW))
 		} else if m.Type == "bind" {
-			binds = append(binds, NewDockerBind(m.Source, m.Destination, m.RW))
+			hostPath := m.Source
+			mountPoint := m.Destination
+
+			binds = append(binds, NewDockerBind(hostPath, mountPoint, m.RW))
 		}
 	}
 
@@ -73,8 +79,8 @@ func (d *DockerClient) CreateContainer(image string, volumes []interfaces.Docker
 	for _, b := range binds {
 		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
 			Type:   "bind",
-			Source: b.GetSource(),
-			Target: b.GetTarget(),
+			Source: b.GetHostPath(),
+			Target: b.GetMountPoint(),
 		})
 	}
 
