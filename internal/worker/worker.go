@@ -9,6 +9,7 @@ import (
 	"docker-backup/internal/ssh"
 	goerrors "errors"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 )
@@ -151,7 +152,10 @@ func (w *Worker) Backup() error {
 
 	var localBackupErrors []error
 	for _, localBackup := range w.localBackups {
-		repoPath := fmt.Sprintf("%s/%s/%s", outputVolumesPath, localBackup.VolumeName, w.sourceContainer.GetID())
+		volumePath := fmt.Sprintf("%s/%s", outputVolumesPath, localBackup.VolumeName)
+		backupLocation := localBackup.Path
+
+		repoPath := path.Join(volumePath, backupLocation, w.sourceContainer.GetID())
 		repo, err := w.createOrGetRepo(repoPath, localBackup.Passphrase)
 		if err != nil {
 			localBackupErrors = append(localBackupErrors, err)
