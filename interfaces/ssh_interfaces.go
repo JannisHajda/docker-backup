@@ -1,6 +1,6 @@
 package interfaces
 
 type SSHClient interface {
-	AddKey(path string) error
+	AddKeyfile(path string) error
 	AddKnownHost(host string) error
 }

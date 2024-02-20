@@ -1,7 +1,5 @@
 package errors
 
-const REMOTE_HOST_NOT_FOOUND = "Could not resolve hostname"
-
 type RemoteHostNotFoundError struct {
 	*InternalError
 }
@@ -11,8 +9,6 @@ func NewRemoteHostNotFoundError(e error) *RemoteHostNotFoundError {
 		InternalError: NewInternalError("Remote host not found error", e),
 	}
 }
-
-const HOST_KEY_VERIFICATION_FAILED = "Host key verification failed"
 
 type HostKeyVerificationFailedError struct {
 	*InternalError

@@ -5,6 +5,7 @@ import (
 	"docker-backup/internal/db"
 	"docker-backup/internal/db/driver"
 	"docker-backup/internal/docker"
+	"regexp"
 )
 
 func MapToSlice(m map[string]string) []string {
@@ -36,4 +37,15 @@ func GetDockerClient() (interfaces.DockerClient, error) {
 	}
 
 	return client, nil
+}
+
+func RegexMatch(s string, regex string) bool {
+	re := regexp.MustCompile(regex)
+	matches := re.FindStringSubmatch(s)
+
+	if len(matches) > 0 {
+		return true
+	}
+
+	return false
 }

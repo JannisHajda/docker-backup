@@ -3,21 +3,21 @@ package docker
 import "docker-backup/interfaces"
 
 type DockerBind struct {
-	Source string
-	Target string
-	RW     bool
+	HostPath   string
+	MountPoint string
+	RW         bool
 }
 
-func NewDockerBind(source string, target string, rw bool) interfaces.DockerBind {
-	return &DockerBind{Source: source, Target: target, RW: rw}
+func NewDockerBind(hostPath string, mountPoint string, rw bool) interfaces.DockerBind {
+	return &DockerBind{HostPath: hostPath, MountPoint: mountPoint, RW: rw}
 }
 
-func (d *DockerBind) GetSource() string {
-	return d.Source
+func (d *DockerBind) GetHostPath() string {
+	return d.HostPath
 }
 
-func (d *DockerBind) GetTarget() string {
-	return d.Target
+func (d *DockerBind) GetMountPoint() string {
+	return d.MountPoint
 }
 
 func (d *DockerBind) IsRW() bool {

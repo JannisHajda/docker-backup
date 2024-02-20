@@ -3,6 +3,7 @@ package ssh
 import (
 	"docker-backup/errors"
 	"docker-backup/interfaces"
+	"docker-backup/internal/helper"
 	"fmt"
 	"strings"
 )
@@ -10,6 +11,13 @@ import (
 type SSHClient struct {
 	container interfaces.DockerContainer
 }
+
+const (
+	SSH_FOLDER = "~/.ssh"
+
+	HOST_KEY_VERIFICATION_FAILED = "Host key verification failed"
+	REMOTE_HOST_NOT_FOOUND       = "Could not resolve hostname"
+)
 
 func NewSSHClient(container interfaces.DockerContainer, keyfiles []interfaces.DockerBind, hosts []string) (interfaces.SSHClient, []error) {
 	client := &SSHClient{container: container}
@@ -21,7 +29,8 @@ func NewSSHClient(container interfaces.DockerContainer, keyfiles []interfaces.Do
 	}
 
 	for _, keyfile := range keyfiles {
-		err = client.AddKey(keyfile.GetTarget())
+		keyfilePath := keyfile.GetMountPoint()
+		err = client.AddKeyfile(keyfilePath)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -42,52 +51,52 @@ func NewSSHClient(container interfaces.DockerContainer, keyfiles []interfaces.Do
 }
 
 func (s *SSHClient) handleError(e error) error {
-	if errors.IsErrOfKind(e, errors.HOST_KEY_VERIFICATION_FAILED) {
+	if helper.RegexMatch(e.Error(), HOST_KEY_VERIFICATION_FAILED) {
 		return errors.NewHostKeyVerificationFailedError(e)
 	}
 
-	if errors.IsErrOfKind(e, errors.REMOTE_HOST_NOT_FOOUND) {
+	if helper.RegexMatch(e.Error(), REMOTE_HOST_NOT_FOOUND) {
 		return errors.NewRemoteHostNotFoundError(e)
 	}
 
-	return fmt.Errorf("unknown error")
+	return e
 }
 
 func (s *SSHClient) initSSHFolder() error {
 	cmd := "mkdir -p ~/.ssh"
 	_, err := s.container.Exec(cmd)
 	if err != nil {
-		return err
+		return s.handleError(err)
 	}
 
 	return nil
 }
 
-func (s *SSHClient) AddKey(path string) error {
-	keyName := strings.Split(path, "/")[len(strings.Split(path, "/"))-1]
+func (s *SSHClient) AddKeyfile(keyfile string) error {
+	keyName := strings.Split(keyfile, "/")[len(strings.Split(keyfile, "/"))-1]
 
 	// copy key to ssh folder
-	cmd := fmt.Sprintf("cp %s /root/.ssh/%s", path, keyName)
+	cmd := fmt.Sprintf("cp %s %s/%s", keyfile, SSH_FOLDER, keyName)
 	_, err := s.container.Exec(cmd)
 	if err != nil {
-		return err
+		return s.handleError(err)
 	}
 
 	// add key to ssh-agent
-	cmd = fmt.Sprintf("eval `ssh-agent` && ssh-add /root/.ssh/%s", keyName)
+	cmd = fmt.Sprintf("eval `ssh-agent` && ssh-add %s/%s", SSH_FOLDER, keyName)
 	_, err = s.container.Exec(cmd)
 	if err != nil {
-		return err
+		return s.handleError(err)
 	}
 
 	return nil
 }
 
 func (s *SSHClient) AddKnownHost(host string) error {
-	cmd := fmt.Sprintf("ssh-keyscan -H %s >> /root/.ssh/known_hosts", host)
+	cmd := fmt.Sprintf("ssh-keyscan -H %s >> %s/known_hosts", host, SSH_FOLDER)
 	_, err := s.container.Exec(cmd)
 	if err != nil {
-		return err
+		return s.handleError(err)
 	}
 
 	return nil

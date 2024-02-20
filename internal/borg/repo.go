@@ -3,44 +3,82 @@ package borg
 import (
 	"docker-backup/errors"
 	"docker-backup/interfaces"
-	"time"
+	"fmt"
+	"strings"
 )
 
-type BorgRepository struct {
+type BorgRepo struct {
 	*BorgClient
 	path       string
 	passphrase string
-	key        string
+	keyfile    string
 }
 
-func NewBorgRepository(c *BorgClient, path string, passphrase string) (interfaces.BorgRepository, error) {
-	return &BorgRepository{BorgClient: c, path: path, passphrase: passphrase}, nil
+func NewBorgRepo(client *BorgClient, path string, passphrase string, keyfile string) *BorgRepo {
+	r := &BorgRepo{
+		BorgClient: client,
+		path:       path,
+		passphrase: passphrase,
+		keyfile:    keyfile,
+	}
+
+	return r
 }
 
-func (b *BorgRepository) GetPath() string {
-	return b.path
+func (b *BorgRepo) authenticate() {
+	b.setPassphrase(b.passphrase)
+	b.setKeyfile(b.keyfile)
 }
 
-func (b *BorgRepository) GetArchives() (string, error) {
-	b.container.SetEnv("BORG_PASSPHRASE", b.passphrase)
+func (b *BorgRepo) validateCompression(compression string) error {
+	supportedCompressions := []string{"none", "lz4", "zstd", "zlib", "lzma"}
+	compression = strings.ToLower(compression)
+
+	for _, c := range supportedCompressions {
+		if c == compression {
+			return nil
+		}
+	}
+
+	return errors.NewBorgUnknownCompressionTypeError(compression)
+}
+
+func (b *BorgRepo) ListArchives() (string, error) {
+	b.authenticate()
 
 	output, err := b.container.Exec("borg list " + b.path)
 	if err != nil {
-		err = errors.HandleBorgClientError(err)
-		return "", err
+		return "", b.handleError(err)
 	}
 
 	return output, nil
 }
 
-func (r *BorgRepository) Backup(input string) error {
-	r.container.SetEnv("BORG_PASSPHRASE", r.passphrase)
-	now := time.Now().Format("2006-01-02T15:04:05")
-
-	_, err := r.container.Exec("borg create " + r.path + "::" + now + " " + input)
+func (b *BorgRepo) CreateArchive(config interfaces.CreateBorgArchiveConfig) error {
+	err := b.validateCompression(config.Compression)
 	if err != nil {
 		return err
 	}
 
+	b.authenticate()
+
+	sources := strings.Join(config.Sources, " ")
+	cmd := fmt.Sprintf("borg create --compression %s %s::%s %s", config.Compression, b.path, config.Name, sources)
+	_, err = b.container.Exec(cmd)
+	if err != nil {
+		return b.handleError(err)
+	}
+
 	return nil
+}
+
+func (b *BorgRepo) Info() (string, error) {
+	b.authenticate()
+
+	output, err := b.container.Exec("borg info " + b.path)
+	if err != nil {
+		return "", b.handleError(err)
+	}
+
+	return output, nil
 }

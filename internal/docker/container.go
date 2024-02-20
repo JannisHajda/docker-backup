@@ -46,6 +46,10 @@ func (d *DockerContainer) SetEnv(key string, value string) {
 	d.envVars[key] = value
 }
 
+func (d *DockerContainer) RemoveEnv(key string) {
+	delete(d.envVars, key)
+}
+
 func (d *DockerContainer) GetEnv(key string) string {
 	return d.envVars[key]
 }

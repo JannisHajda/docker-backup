@@ -1,0 +1,20 @@
+repos:
+  localrepo1:
+    type: "local"
+    volumeName: "localrepo1"
+    path: "/backups/"
+    borg-passphrase: "password"
+
+  localrepo2:
+    type: "local"
+    volumeName: "localrepo2"
+    path: "/backups/"
+    borg-passphrase: "password"
+
+  remoterepo1:
+    type: "remote"
+    borg-passphrase: "test"
+    host: "remote-backup"
+    user: "borg"
+    ssh-key: "/Users/jannis/Git/docker-backup/build/docker/.ssh/id_rsa"
+    path: "/home/borg/backup"

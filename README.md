@@ -15,12 +15,12 @@ cd docker-backup
 ```
 ### Build Docker Worker Image
 ```bash
-Copy code
-docker build -t worker .
+docker build -t worker -f build/docker/worker.Dockerfile .
 ```
 ### Configuration Adjustment
-Navigate to main.go and adapt the configuration based on your requirements.
-###Build & Run Project
+- set the container you want to backup in ```cmd/docker-backup/main.go```
+- configure the repos you want to backup to in ```docker-backup.yml```
+###  Build & Run Project
 ```bash
 go run main.go
 ```

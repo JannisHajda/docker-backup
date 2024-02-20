@@ -1,30 +1,35 @@
 package main
 
 import (
-	"docker-backup/interfaces"
+	"docker-backup/internal/helper"
 	"docker-backup/internal/worker"
 	"fmt"
 )
 
 const (
 	targetContainer = "test-service"
-	passphrase      = "test"
+	configPath      = "/Users/jannis/Git/docker-backup/docker-backup.yml"
 )
 
 func backupContainer() {
-	localbackup1 := worker.NewLocalBackup("local-backup1")
-	localbackup2 := worker.NewLocalBackup("local-backup2")
-	remotebackup := worker.NewRemoteBackup("borg", "remote-backup", "/home/borg/backups", "/Users/jannis/Git/docker-backup/.ssh/id_ed25519")
+	localBackups, remoteBackups, err := helper.ParseConfigFile(configPath)
+	if err != nil {
+		fmt.Printf("error parsing config file: %s\n", err)
+		return
+	}
 
-	worker, err := worker.NewWorker(targetContainer, passphrase, []interfaces.LocalBackup{localbackup1, localbackup2}, []interfaces.RemoteBackup{remotebackup})
+	fmt.Printf("localBackups: %v\n", localBackups)
+	fmt.Printf("remoteBackups: %v\n", remoteBackups)
+
+	w, err := worker.NewWorker(targetContainer, localBackups, remoteBackups)
 	if err != nil {
 		fmt.Printf("error creating worker: %s\n", err)
 		return
 	}
 
-	defer worker.Stop()
+	defer w.Stop()
 
-	err = worker.Backup()
+	err = w.Backup()
 	if err != nil {
 		fmt.Printf("error backing up: %s\n", err)
 		return
