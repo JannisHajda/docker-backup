@@ -1,9 +1,11 @@
-package test
+package tests
 
 import (
 	"docker-backup/errors"
 	"docker-backup/interfaces"
 	"docker-backup/internal/borg"
+	"docker-backup/mocks"
+	goerrors "errors"
 	"testing"
 )
 
@@ -34,5 +36,21 @@ func TestCreateBorgArchiveInvalidCompression(t *testing.T) {
 
 	if _, ok := err.(*errors.BorgUnknownCompressionTypeError); !ok {
 		t.Errorf("Expected error of type BorgUnknownCompressionTypeError, got %T", err)
+	}
+}
+
+func TestBorgClientNotInstalled(t *testing.T) {
+	container := mocks.DockerContainer{}
+	container.On("Exec", "which borg").Return("", goerrors.New("exit status 1"))
+
+	_, err := borg.NewBorgClient(&container)
+
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+
+	var borgNotInstalledError *errors.BorgNotInstalledError
+	if !goerrors.As(err, &borgNotInstalledError) {
+		t.Errorf("Expected error of type BorgNotInstalledError, got %T", err)
 	}
 }
