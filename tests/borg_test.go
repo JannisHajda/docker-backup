@@ -9,6 +9,20 @@ import (
 	"testing"
 )
 
+func GetMockContainer() *mocks.DockerContainer {
+	container := mocks.DockerContainer{}
+	container.On("Exec", "which borg").Return("/usr/bin/borg", nil)
+
+	container.On("SetEnv", "BORG_REPO", "/repo").Return()
+	container.On("SetEnv", "BORG_PASSPHRASE", "passphrase").Return()
+	container.On("SetEnv", "BORG_KEY_FILE", "keyfile").Return()
+	container.On("RemoveEnv", "BORG_REPO").Return()
+	container.On("RemoveEnv", "BORG_PASSPHRASE").Return()
+	container.On("RemoveEnv", "BORG_KEY_FILE").Return()
+
+	return &container
+}
+
 func TestCreateBorgRepoInvalidEncryption(t *testing.T) {
 	client := &borg.BorgClient{}
 	_, err := client.CreateRepo(interfaces.CreateBorgRepoConfig{
@@ -52,5 +66,52 @@ func TestBorgClientNotInstalled(t *testing.T) {
 	var borgNotInstalledError *errors.BorgNotInstalledError
 	if !goerrors.As(err, &borgNotInstalledError) {
 		t.Errorf("Expected error of type BorgNotInstalledError, got %T", err)
+	}
+}
+
+func TestBorgClientGetNonExistingRepo(t *testing.T) {
+	container := GetMockContainer()
+	container.On("Exec", "borg info /repo").Return("", goerrors.New("Repository does not exist"))
+
+	client, _ := borg.NewBorgClient(container)
+	repo, err := client.GetRepo(interfaces.GetBorgRepoConfig{
+		Path: "/repo",
+	})
+
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+
+	var repoDoesNotExist *errors.RepositoryDoesNotExistError
+	if !goerrors.As(err, &repoDoesNotExist) {
+		t.Errorf("Expected error of type BorgRepoDoesNotExistError, got %T", err)
+	}
+
+	if repo != nil {
+		t.Errorf("Expected nil, got %T", repo)
+	}
+}
+
+func TestBorgClientGetRepoWrongPassphrase(t *testing.T) {
+	container := GetMockContainer()
+	container.On("Exec", "borg info /repo").Return("", goerrors.New("Wrong passphrase"))
+
+	client, _ := borg.NewBorgClient(container)
+	repo, err := client.GetRepo(interfaces.GetBorgRepoConfig{
+		Path:       "/repo",
+		Passphrase: "passphrase",
+	})
+
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+
+	var wrongPassphrase *errors.WrongPassphraseError
+	if !goerrors.As(err, &wrongPassphrase) {
+		t.Errorf("Expected error of type WrongPassphraseError, got %T", err)
+	}
+
+	if repo != nil {
+		t.Errorf("Expected nil, got %T", repo)
 	}
 }
