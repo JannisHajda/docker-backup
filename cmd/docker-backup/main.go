@@ -1,26 +1,27 @@
 package main
 
 import (
-	"docker-backup/interfaces"
+	"docker-backup/internal/helper"
 	"docker-backup/internal/worker"
 	"fmt"
 )
 
 const (
 	targetContainer = "test-service"
+	configPath      = "/Users/jannis/Git/docker-backup/docker-backup.yml"
 )
 
 func backupContainer() {
-	localbackup1 := interfaces.LocalBackup{Backup: interfaces.Backup{
-		Passphrase: "test",
-	}, VolumeName: "local-backup"}
+	localBackups, remoteBackups, err := helper.ParseConfigFile(configPath)
+	if err != nil {
+		fmt.Printf("error parsing config file: %s\n", err)
+		return
+	}
 
-	remotebackup1 := interfaces.RemoteBackup{Backup: interfaces.Backup{
-		Passphrase: "test",
-		Path:       "/home/borg/backup",
-	}, Host: "remote-backup", User: "borg", SSHKey: "/Users/jannis/Git/docker-backup/build/docker/.ssh/id_rsa"}
+	fmt.Printf("localBackups: %v\n", localBackups)
+	fmt.Printf("remoteBackups: %v\n", remoteBackups)
 
-	w, err := worker.NewWorker(targetContainer, []interfaces.LocalBackup{localbackup1}, []interfaces.RemoteBackup{remotebackup1})
+	w, err := worker.NewWorker(targetContainer, localBackups, remoteBackups)
 	if err != nil {
 		fmt.Printf("error creating worker: %s\n", err)
 		return

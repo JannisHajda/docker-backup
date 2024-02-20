@@ -11,7 +11,7 @@ import (
 const (
 	REPO_DOES_NOT_EXIST            = "Repository .* does not exist"
 	REPO_PARENT_DIR_DOES_NOT_EXIST = "parent path of the repo directory (.*) does not exist"
-	REPO_ALREADY_EXISTS            = "Repository .* already exists"
+	REPO_ALREADY_EXISTS            = "A repository .* already exists"
 	WRONG_PASSPHRASE               = "Wrong passphrase"
 	PERMISSION_DENIED              = "Permission denied"
 )
