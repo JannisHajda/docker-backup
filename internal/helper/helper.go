@@ -39,7 +39,7 @@ func GetDockerClient() (interfaces.DockerClient, error) {
 	return client, nil
 }
 
-func RegexMatch(regex string, s string) bool {
+func RegexMatch(s string, regex string) bool {
 	re := regexp.MustCompile(regex)
 	matches := re.FindStringSubmatch(s)
 

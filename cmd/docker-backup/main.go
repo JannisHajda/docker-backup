@@ -8,15 +8,19 @@ import (
 
 const (
 	targetContainer = "test-service"
-	passphrase      = "test"
 )
 
 func backupContainer() {
-	localbackup1 := worker.NewLocalBackup("local-backup1")
-	localbackup2 := worker.NewLocalBackup("local-backup2")
-	remotebackup := worker.NewRemoteBackup("borg", "remote-backup", "/home/borg/backups", "/Users/jannis/Git/docker-backup/.ssh/id_ed25519")
+	localbackup1 := interfaces.LocalBackup{Backup: interfaces.Backup{
+		Passphrase: "test",
+	}, VolumeName: "local-backup"}
 
-	w, err := worker.NewWorker(targetContainer, passphrase, []interfaces.LocalBackup{localbackup1, localbackup2}, []interfaces.RemoteBackup{remotebackup})
+	remotebackup1 := interfaces.RemoteBackup{Backup: interfaces.Backup{
+		Passphrase: "test",
+		Path:       "/home/borg/backup",
+	}, Host: "remote-backup", User: "borg", SSHKey: "/Users/jannis/Git/docker-backup/build/docker/.ssh/id_rsa"}
+
+	w, err := worker.NewWorker(targetContainer, []interfaces.LocalBackup{localbackup1}, []interfaces.RemoteBackup{remotebackup1})
 	if err != nil {
 		fmt.Printf("error creating worker: %s\n", err)
 		return

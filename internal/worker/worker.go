@@ -1,23 +1,24 @@
 package worker
 
 import (
+	"docker-backup/errors"
 	"docker-backup/interfaces"
 	"docker-backup/internal/borg"
 	"docker-backup/internal/docker"
 	"docker-backup/internal/helper"
 	"docker-backup/internal/ssh"
+	goerrors "errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 )
 
 const (
-	DOCKER_IMAGE      = "worker"
+	WORKER_IMAGE      = "worker"
 	inputVolumesPath  = "/input"
 	outputVolumesPath = "/output"
-	sshKeyfiles       = "/ssh_keyfiles"
-	borgKeyfiles      = "/borg_keyfiles"
+	sshKeyfilesPath   = "/ssh_keyfiles"
+	borgKeyfilesPath  = "/borg_keyfiles"
 )
 
 type Worker struct {
@@ -26,21 +27,18 @@ type Worker struct {
 	bc  interfaces.BorgClient
 	ssh interfaces.SSHClient
 
-	workerContainer interfaces.DockerContainer
 	sourceContainer interfaces.DockerContainer
+	workerContainer interfaces.DockerContainer
 
-	inputVolumes  []interfaces.DockerVolume
-	repos         []interfaces.BorgRepo
-	outputVolumes []interfaces.DockerVolume
-	borgKeyfiles  []interfaces.DockerBind
-	sshKeyfiles   []interfaces.DockerBind
+	inputVolumes []interfaces.DockerVolume
+	borgKeyfiles []interfaces.DockerBind
+	sshKeyfiles  []interfaces.DockerBind
+
 	localBackups  []interfaces.LocalBackup
 	remoteBackups []interfaces.RemoteBackup
-
-	passphrase string
 }
 
-func NewWorker(containerId string, passphrase string, localBackups []interfaces.LocalBackup, remoteBackups []interfaces.RemoteBackup) (interfaces.Worker, error) {
+func NewWorker(containerId string, localBackups []interfaces.LocalBackup, remoteBackups []interfaces.RemoteBackup) (interfaces.Worker, error) {
 	dc, err := helper.GetDockerClient()
 	if err != nil {
 		return nil, err
@@ -56,306 +54,168 @@ func NewWorker(containerId string, passphrase string, localBackups []interfaces.
 		sourceContainer: container,
 	}
 
-	errs := w.mountLocalBackups(localBackups)
-	if len(errs) > 0 {
-		fmt.Sprintf("Failed to create output volumes: %v", errs)
+	var inputVolumes []interfaces.DockerVolume
+	var outputVolumes []interfaces.DockerVolume
+	var borgKeyfiles []interfaces.DockerBind
+	var sshKeyfiles []interfaces.DockerBind
+	var hosts []string
+
+	for _, v := range container.GetVolumes() {
+		path := fmt.Sprintf("%s/%s", inputVolumesPath, v.GetName())
+		v.SetMountPoint(path)
+		inputVolumes = append(inputVolumes, v)
 	}
 
-	errs = w.mountInputVolumes(container.GetVolumes())
-	if errs != nil {
-		fmt.Sprintf("Failed to create input volumes: %v", err)
+	for _, backup := range localBackups {
+		v, err := dc.CreateVolume(backup.VolumeName)
+		if err != nil {
+			return nil, err
+		}
+
+		path := fmt.Sprintf("%s/%s", outputVolumesPath, v.GetName())
+		v.SetMountPoint(path)
+
+		borgKeyfile := backup.Keyfile
+
+		// mount the borg keyfile
+		if borgKeyfile != "" {
+			bind := docker.NewDockerBind(borgKeyfile, fmt.Sprintf("%s/%s", borgKeyfilesPath, borgKeyfile), false)
+			borgKeyfiles = append(borgKeyfiles, bind)
+		}
+
+		outputVolumes = append(outputVolumes, v)
 	}
 
-	errs = w.mountRemoteBackups(remoteBackups)
-	if errs != nil {
-		fmt.Sprintf("Failed to create remote backups: %v", err)
+	for _, backup := range remoteBackups {
+		borgKeyfile := backup.Keyfile
+		sshKeyfile := backup.SSHKey
+
+		// mount the borg keyfile
+		if borgKeyfile != "" {
+			bind := docker.NewDockerBind(borgKeyfile, fmt.Sprintf("%s/%s", borgKeyfilesPath, borgKeyfile), false)
+			borgKeyfiles = append(borgKeyfiles, bind)
+		}
+
+		// mount the ssh keyfile
+		if sshKeyfile != "" {
+			keyfileName := strings.Split(sshKeyfile, "/")[len(strings.Split(sshKeyfile, "/"))-1]
+			bind := docker.NewDockerBind(sshKeyfile, fmt.Sprintf("%s/%s", sshKeyfilesPath, keyfileName), false)
+			sshKeyfiles = append(sshKeyfiles, bind)
+		}
+
+		hosts = append(hosts, backup.Host)
 	}
 
-	w.passphrase = passphrase
-
-	err = w.createWorkerContainer()
+	workerContainer, err := dc.CreateContainer(WORKER_IMAGE, append(inputVolumes, outputVolumes...), append(borgKeyfiles, sshKeyfiles...))
 	if err != nil {
 		return nil, err
 	}
 
+	workerContainer.Start()
+
+	sshClient, errs := ssh.NewSSHClient(workerContainer, sshKeyfiles, hosts)
+	if len(errs) > 0 {
+		return nil, errs[0]
+	}
+
+	w.ssh = sshClient
+
+	borgClient, err := borg.NewBorgClient(workerContainer)
+	if err != nil {
+		return nil, err
+	}
+
+	w.bc = borgClient
+	w.inputVolumes = inputVolumes
+	w.workerContainer = workerContainer
+	w.localBackups = localBackups
+	w.remoteBackups = remoteBackups
+
 	return w, nil
 }
 
-func (w *Worker) mountLocalBackup(backup interfaces.LocalBackup) error {
-	volume, err := w.dc.CreateVolume(backup.GetVolumeName())
+func (w *Worker) Stop() error {
+	err := w.workerContainer.StopAndRemove()
 	if err != nil {
 		return err
 	}
 
-	volume.SetMountPoint(fmt.Sprintf("%s/%s", outputVolumesPath, backup.GetVolumeName()))
-	backup.SetVolume(volume)
-	w.localBackups = append(w.localBackups, backup)
-	w.outputVolumes = append(w.outputVolumes, volume)
-	return nil
-}
-
-func (w *Worker) mountLocalBackups(backups []interfaces.LocalBackup) []error {
-	var errs []error
-	var errsChan = make(chan error, len(backups))
-	var wg sync.WaitGroup
-
-	for _, backup := range backups {
-		wg.Add(1)
-
-		go func(backup interfaces.LocalBackup) {
-			defer wg.Done()
-
-			err := w.mountLocalBackup(backup)
-			if err != nil {
-				errsChan <- err
-			}
-		}(backup)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errsChan)
-	}()
-
-	for err := range errsChan {
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	if len(errs) > 0 {
-		return errs
-	}
-
-	return nil
-}
-
-func (w *Worker) mountKeyfile(keyfile string) interfaces.DockerBind {
-	keyfileName := strings.Split(keyfile, "/")[len(strings.Split(keyfile, "/"))-1]
-	return docker.NewDockerBind(keyfile, fmt.Sprintf("%s/%s", keyfilesPath, keyfileName), false)
-}
-
-func (w *Worker) mountRemoteBackup(backup interfaces.RemoteBackup) error {
-	// import ssh key
-	keyfile := w.mountKeyfile(backup.GetSshKey())
-	w.sshKeyfiles = append(w.sshKeyfiles, keyfile)
-	w.remoteBackups = append(w.remoteBackups, backup)
-
-	return nil
-}
-
-func (w *Worker) mountRemoteBackups(backups []interfaces.RemoteBackup) []error {
-	var errs []error
-	var errsChan = make(chan error, len(backups))
-	var wg sync.WaitGroup
-
-	for _, backup := range backups {
-		wg.Add(1)
-
-		go func(backup interfaces.RemoteBackup) {
-			defer wg.Done()
-
-			err := w.mountRemoteBackup(backup)
-			if err != nil {
-				errsChan <- err
-			}
-		}(backup)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errsChan)
-	}()
-
-	for err := range errsChan {
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	if len(errs) > 0 {
-		return errs
-	}
-
-	return nil
-}
-
-func (w *Worker) mountInputVolume(volume interfaces.DockerVolume) error {
-	path := fmt.Sprintf("%s/%s", inputVolumesPath, volume.GetName())
-	volume.SetMountPoint(path)
-	w.inputVolumes = append(w.inputVolumes, volume)
-
-	return nil
-}
-
-func (w *Worker) mountInputVolumes(volumes []interfaces.DockerVolume) []error {
-	var errs []error
-	var errsChan = make(chan error, len(volumes))
-	var wg sync.WaitGroup
-
-	for _, volume := range volumes {
-		wg.Add(1)
-
-		go func(volume interfaces.DockerVolume) {
-			defer wg.Done()
-
-			err := w.mountInputVolume(volume)
-			if err != nil {
-				errsChan <- err
-			}
-		}(volume)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errsChan)
-	}()
-
-	for err := range errsChan {
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	if len(errs) > 0 {
-		return errs
-	}
-
-	return nil
-}
-
-func (w *Worker) createWorkerContainer() error {
-	// create worker container
-	var err error
-	w.workerContainer, err = w.dc.CreateContainer(DOCKER_IMAGE, append(w.inputVolumes, w.outputVolumes...), w.keyfiles)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (w *Worker) initSSHClient() []error {
-	var hosts []string
-	for _, backupLocation := range w.remoteBackups {
-		hosts = append(hosts, backupLocation.GetHost())
-	}
-
-	ssh, errs := ssh.NewSSHClient(w.workerContainer, w.sshKeyfiles, hosts)
-	if len(errs) > 0 {
-		return errs
-	}
-
-	w.ssh = ssh
 	return nil
 }
 
 func (w *Worker) Backup() error {
-	if w.workerContainer == nil {
-		err := w.createWorkerContainer()
+	var sources []string
+	for _, v := range w.inputVolumes {
+		sources = append(sources, v.GetMountPoint())
+	}
+
+	var localBackupErrors []error
+	for _, localBackup := range w.localBackups {
+		repoPath := fmt.Sprintf("%s/%s/%s", outputVolumesPath, localBackup.VolumeName, w.sourceContainer.GetID())
+		repo, err := w.createOrGetRepo(repoPath, localBackup.Passphrase)
 		if err != nil {
-			return err
-		}
-	}
-
-	// pre-backup
-
-	err := w.sourceContainer.Stop()
-	if err != nil {
-		return err
-	}
-
-	defer w.sourceContainer.Start()
-
-	err = w.workerContainer.Start()
-	if err != nil {
-		return err
-	}
-
-	defer w.workerContainer.StopAndRemove()
-
-	bc, err := borg.NewBorgClient(w.workerContainer)
-	if err != nil {
-		return err
-	}
-
-	w.bc = bc
-
-	for _, backupLocation := range w.localBackups {
-		path := fmt.Sprintf("%s/%s/%s", outputVolumesPath, backupLocation.GetVolumeName(), w.sourceContainer.GetID())
-		volumeErrs := w.backupVolumes(w.inputVolumes, path)
-
-		if len(volumeErrs) > 0 {
-			fmt.Errorf("Failed to backup volumes: %v", volumeErrs)
-		}
-	}
-
-	if len(w.remoteBackups) > 0 {
-		errs := w.initSSHClient()
-		if len(errs) > 0 {
-			fmt.Printf("Failed to initialize SSH client: %v", errs)
+			localBackupErrors = append(localBackupErrors, err)
+			continue
 		}
 
-		var remoteBackupErros [][]error
+		currentTimestamp := time.Now().Format("2006-01-02T15:04:05")
+		err = repo.CreateArchive(interfaces.CreateBorgArchiveConfig{
+			Compression: "zstd",
+			Sources:     sources,
+			Name:        currentTimestamp,
+		})
 
-		for _, backupLocation := range w.remoteBackups {
-			path := fmt.Sprintf("%s@%s:%s/%s", backupLocation.GetUser(), backupLocation.GetHost(), backupLocation.GetPath(), w.sourceContainer.GetID())
-			volumeErrs := w.backupVolumes(w.inputVolumes, path)
-			remoteBackupErros = append(remoteBackupErros, volumeErrs)
-		}
-
-		if len(errs) > 0 {
-			fmt.Errorf("Failed to backup volumes: %v", errs)
-		}
-	}
-
-	// post-backup
-
-	return nil
-}
-
-func (w *Worker) backupVolumes(volumes []interfaces.DockerVolume, output string) []error {
-	var errs []error
-	for _, volume := range volumes {
-		err := w.backupVolume(volume, fmt.Sprintf("%s/%s", output, volume.GetName()))
 		if err != nil {
-			errs = append(errs, err)
+			localBackupErrors = append(localBackupErrors, err)
 		}
 	}
 
-	return errs
-}
+	var remoteBackupErrors []error
+	for _, remoteBackup := range w.remoteBackups {
+		repoPath := fmt.Sprintf("%s@%s:%s/%s", remoteBackup.User, remoteBackup.Host, remoteBackup.Path, w.sourceContainer.GetID())
+		repo, err := w.createOrGetRepo(repoPath, remoteBackup.Passphrase)
+		if err != nil {
+			remoteBackupErrors = append(remoteBackupErrors, err)
+			continue
+		}
 
-func (w *Worker) backupVolume(volume interfaces.DockerVolume, repoPath string) error {
-	// create repository
-	repo, err := w.bc.GetOrCreateRepo(interfaces.CreateBorgRepoConfig{
-		Path:           repoPath,
-		Passphrase:     w.passphrase,
-		EncryptionType: "repokey-blake2",
-		MakeParentDirs: true,
-	})
-	if err != nil {
-		return err
+		currentTimestamp := time.Now().Format("2006-01-02T15:04:05")
+
+		err = repo.CreateArchive(interfaces.CreateBorgArchiveConfig{
+			Compression: "zstd",
+			Sources:     sources,
+			Name:        currentTimestamp,
+		})
+
+		if err != nil {
+			remoteBackupErrors = append(remoteBackupErrors, err)
+		}
 	}
 
-	now := time.Now().Format("2006-01-02-15-04-05")
-
-	err = repo.CreateArchive(interfaces.CreateBorgArchiveConfig{
-		Sources:     []string{volume.GetMountPoint()},
-		Name:        now,
-		Compression: "zstd",
-	})
-	if err != nil {
-		return err
+	if len(localBackupErrors) > 0 {
+		fmt.Printf("Local backup errors: %v\n", localBackupErrors)
 	}
 
-	return nil
-}
-
-func (w *Worker) Stop() error {
-	if w.workerContainer != nil {
-		return w.workerContainer.StopAndRemove()
+	if len(remoteBackupErrors) > 0 {
+		fmt.Printf("Remote backup errors: %v\n", remoteBackupErrors)
 	}
 
 	return nil
+}
+
+func (w *Worker) createOrGetRepo(repoPath string, passphrase string) (interfaces.BorgRepo, error) {
+	repo, err := w.bc.GetRepo(interfaces.GetBorgRepoConfig{Path: repoPath, Passphrase: passphrase})
+	if err != nil {
+		var err *errors.RepositoryDoesNotExistError
+		if goerrors.As(err, &err) {
+			var createErr error
+			repo, createErr = w.bc.CreateRepo(interfaces.CreateBorgRepoConfig{Path: repoPath, EncryptionType: "repokey-blake2", Passphrase: passphrase})
+
+			if createErr != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return repo, nil
 }

@@ -4,11 +4,12 @@ import (
 	"docker-backup/errors"
 	"docker-backup/interfaces"
 	"docker-backup/internal/helper"
+	"fmt"
 	"strings"
 )
 
 const (
-	REPO_DOES_NOT_EXIST            = "Repository does not exist"
+	REPO_DOES_NOT_EXIST            = "Repository .* does not exist"
 	REPO_PARENT_DIR_DOES_NOT_EXIST = "parent path of the repo directory (.*) does not exist"
 	REPO_ALREADY_EXISTS            = "Repository .* already exists"
 	WRONG_PASSPHRASE               = "Wrong passphrase"
@@ -111,19 +112,21 @@ func (b *BorgClient) CreateRepo(config interfaces.CreateBorgRepoConfig) (interfa
 		return nil, err
 	}
 
-	cmd := "borg init"
+	cmd := fmt.Sprintf("borg init --encryption=%s ", config.EncryptionType)
 
 	if config.MakeParentDirs {
-		cmd += " --make-parent-dirs"
+		cmd += " --make-parent-dirs "
 	}
 
 	if config.AppendOnly {
-		cmd += " --append-only"
+		cmd += " --append-only "
 	}
 
 	if config.StorageQuota != "" {
 		cmd += " --storage-quota " + config.StorageQuota
 	}
+
+	cmd += config.Path
 
 	b.setPassphrase(config.Passphrase)
 	b.setKeyfile(config.Keyfile)

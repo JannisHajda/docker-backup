@@ -5,16 +5,20 @@ type Worker interface {
 	Stop() error
 }
 
-type LocalBackup interface {
-	SetVolumeName(name string)
-	GetVolumeName() string
-	SetVolume(volume DockerVolume)
-	GetVolume() DockerVolume
+type Backup struct {
+	Path       string
+	Passphrase string
+	Keyfile    string
 }
 
-type RemoteBackup interface {
-	GetUser() string
-	GetHost() string
-	GetPath() string
-	GetSshKey() string
+type LocalBackup struct {
+	Backup
+	VolumeName string
+}
+
+type RemoteBackup struct {
+	Backup
+	User   string
+	Host   string
+	SSHKey string
 }
