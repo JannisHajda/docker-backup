@@ -1,3 +1,6 @@
+### ssh ###
+.ssh
+
 # Created by https://www.toptal.com/developers/gitignore/api/linux,macos,windows,go,goland,visualstudiocode,vim,dotenv
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,macos,windows,go,goland,visualstudiocode,vim,dotenv
 

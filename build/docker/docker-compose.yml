@@ -9,22 +9,39 @@ services:
     volumes:
       - test-volume1:/test-volume1
       - test-volume2:/test-volume2
+    networks:
+        - docker-backup
+
   remote-backup:
-    image: worker
-    command: tail -f /dev/null
+    build:
+        context: .
+        dockerfile: remote-backup.Dockerfile
     container_name: remote-backup
     volumes:
       - remote-backup-data:/home/borg/backup
+    networks:
+        - docker-backup
+
   worker:
-    image: worker
-    command: tail -f /dev/null
+    build:
+        context: .
+        dockerfile: worker.Dockerfile
+    depends_on:
+        - remote-backup
+    command: /usr/local/bin/worker-entrypoint.sh
     container_name: worker
     volumes:
       - test-volume1:/input/test-volume1
       - test-volume2:/input/test-volume2
       - ./.ssh:/root/.ssh
+    networks:
+        - docker-backup
+
 volumes:
     test-volume1:
     test-volume2:
     docker-backup-db:
     remote-backup-data:
+
+networks:
+  docker-backup:

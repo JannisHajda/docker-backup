@@ -213,7 +213,12 @@ func (w *Worker) createOrGetRepo(repoPath string, passphrase string) (interfaces
 		var err *errors.RepositoryDoesNotExistError
 		if goerrors.As(err, &err) {
 			var createErr error
-			repo, createErr = w.bc.CreateRepo(interfaces.CreateBorgRepoConfig{Path: repoPath, EncryptionType: "repokey-blake2", Passphrase: passphrase})
+			repo, createErr = w.bc.CreateRepo(interfaces.CreateBorgRepoConfig{
+				Path:           repoPath,
+				EncryptionType: "repokey-blake2",
+				Passphrase:     passphrase,
+				MakeParentDirs: true,
+			})
 
 			if createErr != nil {
 				return nil, err
