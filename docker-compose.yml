@@ -1,0 +1,36 @@
+services:
+  vault:
+    image: vaultwarden/server:latest
+    container_name: vault
+    restart: unless-stopped
+    volumes:
+      - vault_data:/data:rw
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@vault_db:5432/${POSTGRES_DB}
+      - SIGNUPS_ALLOWED=false
+      - DOMAIN=https://${HOST}
+    depends_on:
+      vault_db:
+        condition: service_healthy
+
+  vault_db:
+    image: postgres:13
+    container_name: vault_db
+    restart: unless-stopped
+    volumes:
+      - vault_db_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    labels:
+      - "docker-backup.prebackup=pg_dump -U ${POSTGRES_USER} --clean --if-exists --create -d ${POSTGRES_DB} > /var/lib/postgresql/data/backup.sql"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+    vault_data:
+    vault_db_data:
