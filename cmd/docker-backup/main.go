@@ -4,51 +4,14 @@ import (
 	"context"
 	"fmt"
 	"github.com/JannisHajda/docker-backup/internal/docker"
-	"github.com/joho/godotenv"
+	"github.com/JannisHajda/docker-backup/internal/utils"
 	"log"
-	"os"
-	"strings"
 
 	_ "github.com/JannisHajda/docker-backup/internal/docker"
 	"github.com/docker/docker/api/types/mount"
 )
 
-type Env struct {
-	TARGET_CONTAINERS []string
-	BORG_REPO         string
-	BORG_PASSPHRASE   string
-	OUTPUT_VOLUME     string
-	MEGA_USERNAME     string
-	MEGA_PASSWORD     string
-}
-
-func loadEnv() Env {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
-
-	env := Env{
-		BORG_REPO:       os.Getenv("BORG_REPO"),
-		BORG_PASSPHRASE: os.Getenv("BORG_PASSPHRASE"),
-		OUTPUT_VOLUME:   os.Getenv("OUTPUT_VOLUME"),
-		MEGA_USERNAME:   os.Getenv("MEGA_USERNAME"),
-		MEGA_PASSWORD:   os.Getenv("MEGA_PASSWORD"),
-	}
-
-	targetContainers := os.Getenv("TARGET_CONTAINERS")
-	if targetContainers != "" {
-		env.TARGET_CONTAINERS = strings.Split(targetContainers, ",")
-	}
-
-	if len(env.TARGET_CONTAINERS) == 0 || env.BORG_REPO == "" || env.BORG_PASSPHRASE == "" || env.OUTPUT_VOLUME == "" || env.MEGA_USERNAME == "" || env.MEGA_PASSWORD == "" {
-		log.Fatal("BORG_REPO, BORG_PASSPHRASE, and OUTPUT_VOLUME must be set in .env file")
-	}
-
-	return env
-}
-
-func getUniqueVolumeMounts(containers []*docker.Container) []mount.Mount {
+func getInputVolumes(containers []*docker.Container) []mount.Mount {
 	volumesMap := make(map[string]bool)
 	var mounts []mount.Mount
 	for _, c := range containers {
@@ -86,6 +49,13 @@ func main() {
 	env := loadEnv()
 	ctx := context.Background()
 
+	config, err := utils.ParseConfig()
+	if err != nil {
+		log.Fatalf("Error parsing config: %v", err)
+	}
+
+	fmt.Println(config)
+
 	client, err := docker.NewClient(ctx)
 	if err != nil {
 		log.Fatalf("Error creating Docker client: %v", err)
@@ -98,7 +68,7 @@ func main() {
 		log.Fatal("No target containers found")
 	}
 
-	mounts := getUniqueVolumeMounts(containers)
+	mounts := getInputVolumes(containers)
 	mounts = append(mounts, mount.Mount{
 		Type:   mount.TypeVolume,
 		Source: "backups",
@@ -158,6 +128,20 @@ func main() {
 		if err := c.Unpause(ctx); err != nil {
 			log.Printf("Error unpausing container %s: %v", c.ID, err)
 		}
+	}
+
+	syncConf := docker.SyncConfig{
+		Name:       "mega",
+		Type:       "mega",
+		OutputPath: "/test",
+		User:       env.MEGA_USERNAME,
+		Password:   env.MEGA_PASSWORD,
+	}
+
+	if err := worker.Sync(syncConf); err != nil {
+		log.Printf("Error syncing repository: %v", err)
+		worker.StopAndRemove(ctx)
+		return
 	}
 
 	log.Println("Backup process completed.")

@@ -1,6 +1,8 @@
-FROM ubuntu
+FROM ubuntu:22.04
 
-# Update and install necessary tools
+# Switch to bash with pipefail so the build fails if install.sh fails
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 RUN apt-get update && apt-get install -y \
     curl \
     unzip \
@@ -14,21 +16,24 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 
 # Set up the stable Docker repository
-RUN echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+RUN echo "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
 
 # Install Docker CLI
 RUN apt-get update && apt-get install -y docker-ce-cli
 
-# Download the Borg binary for glibc 2.36
-RUN wget -O /usr/local/bin/borg https://github.com/borgbackup/borg/releases/download/1.4.0/borg-linux-glibc236
+# Download and set up Borg
+RUN wget -O /usr/local/bin/borg \
+      https://github.com/borgbackup/borg/releases/download/1.4.0/borg-linux-glibc236 && \
+    chown root:root /usr/local/bin/borg && \
+    chmod 755 /usr/local/bin/borg
 
-# Set permissions for Borg binary
-RUN chown root:root /usr/local/bin/borg && chmod 755 /usr/local/bin/borg
-
-# Optional: Create a symlink for borgfs
+# Optional symlink for borgfs
 RUN ln -s /usr/local/bin/borg /usr/local/bin/borgfs
 
-# Install rclone
-RUN curl https://rclone.org/install.sh | bash
+# Install rclone. If the script fails, the build fails due to pipefail
+RUN curl https://rclone.org/install.sh | bash && \
+    which rclone && \
+    rclone version
 
 CMD ["/bin/bash"]

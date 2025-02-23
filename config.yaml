@@ -1,0 +1,11 @@
+projects:
+  vault:
+    containers: [vault_db, vault]
+    passphrase: ${BORG_PASSPHRASE}
+
+remotes:
+  mega:
+    type: mega
+    user: ${MEGA_USER}
+    password: ${MEGA_PASSWORD}
+    path: /${MEGA_PATH}

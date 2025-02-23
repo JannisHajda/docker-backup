@@ -7,8 +7,7 @@ import (
 
 type Worker struct {
 	Container
-	repoPath       string
-	repoPassphrase string
+	repoName string
 }
 
 func (w *Worker) initRepo() error {
@@ -64,6 +63,38 @@ func (w *Worker) BackupRepo() error {
 
 	if exitCode != 0 {
 		return fmt.Errorf("failed to create borg archive: exit code %d, stderr: %s", exitCode, stderr)
+	}
+
+	return nil
+}
+
+type SyncConfig struct {
+	Name       string
+	Type       string
+	User       string
+	Password   string
+	OutputPath string
+}
+
+func (w *Worker) Sync(conf SyncConfig) error {
+	cmd := fmt.Sprintf("rclone config create %s %s user %s pass %s", conf.Name, conf.Type, conf.User, conf.Password)
+	_, stderr, exitCode, err := w.Exec(cmd)
+	if err != nil {
+		return err
+	}
+
+	if exitCode != 0 {
+		return fmt.Errorf("failed to create rclone config: exit code %d, stderr: %s", exitCode, stderr)
+	}
+
+	cmd = fmt.Sprintf("rclone sync /output/%s %s:%s/%s", w.repoName, conf.Name, conf.OutputPath, w.repoName)
+	_, stderr, exitCode, err = w.Exec(cmd)
+	if err != nil {
+		return err
+	}
+
+	if exitCode != 0 {
+		return fmt.Errorf("failed to sync rclone: exit code %d, stderr: %s", exitCode, stderr)
 	}
 
 	return nil
