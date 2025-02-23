@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 	"os"
 )
@@ -23,6 +24,10 @@ type Remote struct {
 }
 
 func ParseConfig() (*Config, error) {
+	if err := godotenv.Load(); err != nil {
+		return nil, err
+	}
+
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		return nil, err

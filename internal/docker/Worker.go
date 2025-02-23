@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"github.com/JannisHajda/docker-backup/internal/utils"
 	_ "github.com/rclone/rclone/backend/mega" // Import the mega backend
 )
 
@@ -68,16 +69,8 @@ func (w *Worker) BackupRepo() error {
 	return nil
 }
 
-type SyncConfig struct {
-	Name       string
-	Type       string
-	User       string
-	Password   string
-	OutputPath string
-}
-
-func (w *Worker) Sync(conf SyncConfig) error {
-	cmd := fmt.Sprintf("rclone config create %s %s user %s pass %s", conf.Name, conf.Type, conf.User, conf.Password)
+func (w *Worker) Sync(name string, conf utils.Remote) error {
+	cmd := fmt.Sprintf("rclone config create %s %s user %s pass %s", name, conf.Type, conf.User, conf.Pass)
 	_, stderr, exitCode, err := w.Exec(cmd)
 	if err != nil {
 		return err
@@ -87,7 +80,7 @@ func (w *Worker) Sync(conf SyncConfig) error {
 		return fmt.Errorf("failed to create rclone config: exit code %d, stderr: %s", exitCode, stderr)
 	}
 
-	cmd = fmt.Sprintf("rclone sync /output/%s %s:%s/%s", w.repoName, conf.Name, conf.OutputPath, w.repoName)
+	cmd = fmt.Sprintf("rclone sync /output/%s %s:%s/%s", w.repoName, name, conf.Path, w.repoName)
 	_, stderr, exitCode, err = w.Exec(cmd)
 	if err != nil {
 		return err

@@ -7,5 +7,5 @@ remotes:
   mega:
     type: mega
     user: ${MEGA_USER}
-    password: ${MEGA_PASSWORD}
-    path: /${MEGA_PATH}
+    pass: ${MEGA_PASSWORD}
+    path: ${MEGA_PATH}
