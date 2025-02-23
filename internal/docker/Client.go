@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	dockerClient "github.com/docker/docker/client"
@@ -38,12 +39,12 @@ func (cli *Client) GetContext() context.Context {
 	return cli.ctx
 }
 
-func (cli *Client) SpawnWorker(repoPath string, repoPassphrase string, mounts []mount.Mount) (*Worker, error) {
+func (cli *Client) SpawnWorker(repoName string, repoPassphrase string, mounts []mount.Mount) (*Worker, error) {
 	config := container.Config{
-		Image: "docker-backup-worker",
+		Image: workerImage,
 		Cmd:   []string{"tail", "-f", "/dev/null"},
 		Env: []string{
-			"BORG_REPO=" + repoPath,
+			fmt.Sprintf("BORG_REPO=/output/%s", repoName),
 			"BORG_PASSPHRASE=" + repoPassphrase,
 		},
 	}
@@ -62,7 +63,7 @@ func (cli *Client) SpawnWorker(repoPath string, repoPassphrase string, mounts []
 		return nil, err
 	}
 
-	w := Worker{Container: *c, repoPath: repoPath, repoPassphrase: repoPassphrase}
+	w := Worker{Container: *c, repoName: repoName}
 
 	if err := w.Start(cli.ctx); err != nil {
 		return nil, err

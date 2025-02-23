@@ -2,13 +2,13 @@ package docker
 
 import (
 	"fmt"
+	"github.com/JannisHajda/docker-backup/internal/utils"
 	_ "github.com/rclone/rclone/backend/mega" // Import the mega backend
 )
 
 type Worker struct {
 	Container
-	repoPath       string
-	repoPassphrase string
+	repoName string
 }
 
 func (w *Worker) initRepo() error {
@@ -64,6 +64,30 @@ func (w *Worker) BackupRepo() error {
 
 	if exitCode != 0 {
 		return fmt.Errorf("failed to create borg archive: exit code %d, stderr: %s", exitCode, stderr)
+	}
+
+	return nil
+}
+
+func (w *Worker) Sync(name string, conf utils.Remote) error {
+	cmd := fmt.Sprintf("rclone config create %s %s user %s pass %s", name, conf.Type, conf.User, conf.Pass)
+	_, stderr, exitCode, err := w.Exec(cmd)
+	if err != nil {
+		return err
+	}
+
+	if exitCode != 0 {
+		return fmt.Errorf("failed to create rclone config: exit code %d, stderr: %s", exitCode, stderr)
+	}
+
+	cmd = fmt.Sprintf("rclone sync /output/%s %s:%s/%s", w.repoName, name, conf.Path, w.repoName)
+	_, stderr, exitCode, err = w.Exec(cmd)
+	if err != nil {
+		return err
+	}
+
+	if exitCode != 0 {
+		return fmt.Errorf("failed to sync rclone: exit code %d, stderr: %s", exitCode, stderr)
 	}
 
 	return nil
