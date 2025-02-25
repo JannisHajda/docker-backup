@@ -1,0 +1,25 @@
+FROM ubuntu:22.04
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    unzip \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    wget
+
+RUN wget -O /usr/local/bin/borg \
+      https://github.com/borgbackup/borg/releases/download/1.4.0/borg-linux-glibc236 && \
+    chown root:root /usr/local/bin/borg && \
+    chmod 755 /usr/local/bin/borg
+
+RUN ln -s /usr/local/bin/borg /usr/local/bin/borgfs
+
+RUN curl https://rclone.org/install.sh | bash && \
+    which rclone && \
+    rclone version
+
+CMD ["/bin/bash"]

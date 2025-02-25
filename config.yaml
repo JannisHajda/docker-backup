@@ -1,3 +1,5 @@
+volume: backups
+
 projects:
   vault:
     containers: [vault_db, vault]
