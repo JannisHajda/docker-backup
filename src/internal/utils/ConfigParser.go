@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	Volume   string             `yaml:"volume"`
-	Projects map[string]Project `yaml:"projects"`
-	Remotes  map[string]Remote  `yaml:"remotes"`
+	Volume      string             `yaml:"volume"`
+	WorkerImage string             `yaml:"worker"`
+	Projects    map[string]Project `yaml:"projects"`
+	Remotes     map[string]Remote  `yaml:"remotes"`
 }
 
 type Project struct {

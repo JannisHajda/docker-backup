@@ -10,20 +10,17 @@ import (
 
 type Client struct {
 	dockerClient.Client
-	ctx context.Context
+	ctx         context.Context
+	workerImage string
 }
 
-const (
-	workerImage = "worker"
-)
-
-func NewClient(ctx context.Context) (*Client, error) {
+func NewClient(ctx context.Context, workerImage string) (*Client, error) {
 	cli, err := dockerClient.NewClientWithOpts(dockerClient.FromEnv, dockerClient.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
 
-	return &Client{Client: *cli, ctx: ctx}, nil
+	return &Client{Client: *cli, ctx: ctx, workerImage: workerImage}, nil
 }
 
 func (cli *Client) GetContainer(id string) (*Container, error) {
@@ -41,7 +38,7 @@ func (cli *Client) GetContext() context.Context {
 
 func (cli *Client) SpawnWorker(repoName string, repoPassphrase string, mounts []mount.Mount) (*Worker, error) {
 	config := container.Config{
-		Image: workerImage,
+		Image: cli.workerImage,
 		Cmd:   []string{"tail", "-f", "/dev/null"},
 		Env: []string{
 			fmt.Sprintf("BORG_REPO=/output/%s", repoName),

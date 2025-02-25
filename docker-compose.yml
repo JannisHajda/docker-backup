@@ -2,7 +2,7 @@ services:
   master:
     image: docker-backup-master
     container_name: master
-    restart: unless-stopped
+    restart: no
     volumes:
         - /var/run/docker.sock:/var/run/docker.sock
         - master_data:/data

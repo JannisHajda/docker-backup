@@ -55,7 +55,7 @@ func main() {
 
 	fmt.Println(config)
 
-	client, err := docker.NewClient(ctx)
+	client, err := docker.NewClient(ctx, config.WorkerImage)
 	if err != nil {
 		log.Fatalf("Error creating Docker client: %v", err)
 	}

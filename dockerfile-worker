@@ -11,12 +11,15 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     wget
 
-RUN wget -O /usr/local/bin/borg \
-      https://github.com/borgbackup/borg/releases/download/1.4.0/borg-linux-glibc236 && \
-    chown root:root /usr/local/bin/borg && \
-    chmod 755 /usr/local/bin/borg
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+      wget https://borg.bauerj.eu/bin/borg-1.4.0-arm64 -O /usr/bin/borg; \
+    else \
+      wget https://github.com/borgbackup/borg/releases/download/1.4.0/borg-linux-glibc236 -O /usr/bin/borg; \
+    fi && \
+    chmod a+x /usr/bin/borg
 
-RUN ln -s /usr/local/bin/borg /usr/local/bin/borgfs
+RUN ln -s /usr/bin/borg /usr/local/bin/borgfs
 
 RUN curl https://rclone.org/install.sh | bash && \
     which rclone && \

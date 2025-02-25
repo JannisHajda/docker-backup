@@ -1,4 +1,5 @@
 volume: backups
+worker: docker-backup-worker
 
 projects:
   vault:
