@@ -243,4 +243,8 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Sqlite
+*.sqlite3
+*.db
+
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,linux,jetbrains+all,git,visualstudiocode,vim,go,dotenv
