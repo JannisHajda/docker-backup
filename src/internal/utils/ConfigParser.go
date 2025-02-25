@@ -1,12 +1,13 @@
 package utils
 
 import (
-	"github.com/joho/godotenv"
+	"fmt"
 	"gopkg.in/yaml.v3"
 	"os"
 )
 
 type Config struct {
+	Volume   string             `yaml:"volume"`
 	Projects map[string]Project `yaml:"projects"`
 	Remotes  map[string]Remote  `yaml:"remotes"`
 }
@@ -24,11 +25,12 @@ type Remote struct {
 }
 
 func ParseConfig() (*Config, error) {
-	if err := godotenv.Load(); err != nil {
-		return nil, err
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		return nil, fmt.Errorf("CONFIG_PATH not set")
 	}
 
-	data, err := os.ReadFile("config.yaml")
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
 	}

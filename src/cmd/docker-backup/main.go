@@ -77,7 +77,7 @@ func main() {
 		mounts := getInputVolumes(containers)
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeVolume,
-			Source: "backups",
+			Source: config.Volume,
 			Target: "/output",
 		})
 
