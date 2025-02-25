@@ -26,6 +26,11 @@ type Remote struct {
 }
 
 func ParseConfig() (*Config, error) {
+	//err := godotenv.Load("../.env")
+	//if err != nil {
+	//	return nil, err
+	//}
+
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		return nil, fmt.Errorf("CONFIG_PATH not set")
