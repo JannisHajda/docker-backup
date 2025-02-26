@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/JannisHajda/docker-backup/internal/db"
 	"github.com/JannisHajda/docker-backup/internal/docker"
 	"github.com/JannisHajda/docker-backup/internal/utils"
 	"log"
@@ -53,7 +54,8 @@ func main() {
 		log.Fatalf("Error parsing config: %v", err)
 	}
 
-	fmt.Println(config)
+	dbClient := db.NewClient()
+	fmt.Sprintf("Connected to database %v", dbClient)
 
 	client, err := docker.NewClient(ctx, config.WorkerImage)
 	if err != nil {
@@ -68,6 +70,23 @@ func main() {
 	}
 
 	for name, project := range projects {
+		p, err := dbClient.GetProject(name)
+		if err != nil {
+			if err.Error() == "record not found" {
+				fmt.Sprintf("Project %s not found, creating...", name)
+				p, err = dbClient.CreateProject(name)
+				if err != nil {
+					log.Printf("Error creating project %s: %v", name, err)
+					continue
+				}
+
+				log.Printf("Project %s created.", name)
+			} else {
+				fmt.Errorf("Error getting project %s: %v", name, err)
+				continue
+			}
+		}
+
 		containers := getTargetContainers(project, client)
 		if len(containers) == 0 {
 			log.Printf("No containers found for project %s", name)
@@ -143,6 +162,11 @@ func main() {
 				log.Printf("Error syncing to remote %s: %v", name, err)
 				continue
 			}
+		}
+
+		_, err = p.CreateBackup()
+		if err != nil {
+			log.Printf("Error storing backup in db %s: %v", name, err)
 		}
 
 		log.Printf("Backup for project %s completed.", name)
