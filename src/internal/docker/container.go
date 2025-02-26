@@ -2,7 +2,6 @@ package docker
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -59,30 +58,30 @@ func (c *Container) Exec(cmd string) (string, string, int, error) {
 	return stdoutBuf.String(), stderrBuf.String(), inspect.ExitCode, nil
 }
 
-func (c *Container) Start(ctx context.Context) error {
-	return c.client.ContainerStart(ctx, c.ID, container.StartOptions{})
+func (c *Container) Start() error {
+	return c.client.ContainerStart(c.client.ctx, c.ID, container.StartOptions{})
 }
 
-func (c *Container) Stop(ctx context.Context) error {
-	return c.client.ContainerStop(ctx, c.ID, container.StopOptions{})
+func (c *Container) Stop() error {
+	return c.client.ContainerStop(c.client.ctx, c.ID, container.StopOptions{})
 }
 
-func (c *Container) Pause(ctx context.Context) error {
-	return c.client.ContainerPause(ctx, c.ID)
+func (c *Container) Pause() error {
+	return c.client.ContainerPause(c.client.ctx, c.ID)
 }
 
-func (c *Container) Unpause(ctx context.Context) error {
-	return c.client.ContainerUnpause(ctx, c.ID)
+func (c *Container) Unpause() error {
+	return c.client.ContainerUnpause(c.client.ctx, c.ID)
 }
 
-func (c *Container) Remove(ctx context.Context) error {
-	return c.client.ContainerRemove(ctx, c.ID, container.RemoveOptions{})
+func (c *Container) Remove() error {
+	return c.client.ContainerRemove(c.client.ctx, c.ID, container.RemoveOptions{})
 }
 
-func (c *Container) StopAndRemove(ctx context.Context) error {
-	if err := c.Stop(ctx); err != nil {
+func (c *Container) StopAndRemove() error {
+	if err := c.Stop(); err != nil {
 		return fmt.Errorf("failed to unpause container %s: %v", c.ID, err)
 	}
 
-	return c.Remove(ctx)
+	return c.Remove()
 }

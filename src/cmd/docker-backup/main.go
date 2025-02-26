@@ -6,6 +6,7 @@ import (
 	"github.com/JannisHajda/docker-backup/internal/db"
 	"github.com/JannisHajda/docker-backup/internal/docker"
 	"github.com/JannisHajda/docker-backup/internal/utils"
+	"github.com/JannisHajda/docker-backup/internal/worker"
 	"log"
 
 	_ "github.com/JannisHajda/docker-backup/internal/docker"
@@ -100,25 +101,13 @@ func main() {
 			Target: "/output",
 		})
 
-		worker, err := client.SpawnWorker(name, project.Passphrase, mounts)
+		w, err := worker.NewWorker(client, config.WorkerImage, mounts, nil)
 		if err != nil {
 			fmt.Errorf("Error spawning worker: %v", err)
 			continue
 		}
 
-		defer func() {
-			if err := worker.StopAndRemove(ctx); err != nil {
-				log.Printf("Error removing worker container: %v", err)
-			} else {
-				log.Printf("Worker container %s removed.", worker.ID)
-			}
-		}()
-
-		if err := worker.InitOutputRepo(); err != nil {
-			log.Printf("Error initializing output repository: %v", err)
-			worker.StopAndRemove(ctx)
-			continue
-		}
+		defer w.Stop()
 
 		var pausedContainers []*docker.Container
 		for _, c := range containers {
@@ -136,7 +125,7 @@ func main() {
 				}
 			}
 
-			if err := c.Pause(ctx); err != nil {
+			if err := c.Pause(); err != nil {
 				log.Printf("Error pausing container %s: %v", c.Name, err)
 				continue
 			}
@@ -144,29 +133,26 @@ func main() {
 			pausedContainers = append(pausedContainers, c)
 		}
 
-		if err := worker.BackupRepo(); err != nil {
+		repoConfig := worker.RepoConfig{
+			Name:       name,
+			Passphrase: project.Passphrase,
+		}
+
+		_, err = w.Backup(repoConfig)
+		if err != nil {
 			log.Printf("Error backing up repository: %v", err)
-			worker.StopAndRemove(ctx)
 			continue
-		}
-
-		for _, c := range pausedContainers {
-			if err := c.Unpause(ctx); err != nil {
-				log.Printf("Error unpausing container %s: %v", c.ID, err)
-			}
-		}
-
-		remotes := config.Remotes
-		for name, remote := range remotes {
-			if err := worker.Sync(name, remote); err != nil {
-				log.Printf("Error syncing to remote %s: %v", name, err)
-				continue
-			}
 		}
 
 		_, err = p.CreateBackup()
 		if err != nil {
 			log.Printf("Error storing backup in db %s: %v", name, err)
+		}
+
+		for _, c := range pausedContainers {
+			if err := c.Unpause(); err != nil {
+				log.Printf("Error unpausing container %s: %v", c.ID, err)
+			}
 		}
 
 		log.Printf("Backup for project %s completed.", name)
